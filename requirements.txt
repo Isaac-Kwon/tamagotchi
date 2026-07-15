@@ -1,0 +1,10 @@
+# Soul Tamagotchi — runtime dependencies
+# The agent core depends only on httpx + the Python standard library.
+# fastapi / uvicorn / mcp are listed for later milestones (web API, MCP server).
+httpx
+fastapi
+uvicorn
+mcp
+
+# Dev dependency (not required at runtime): pytest
+# Install with:  pip install pytest   (or see requirements-dev.txt)

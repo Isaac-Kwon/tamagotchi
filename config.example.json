@@ -1,0 +1,59 @@
+{
+  "llm": {
+    "base_url": "https://api.openai.com/v1",
+    "model": "gpt-4o-mini",
+    "api_key_env": "OPENAI_API_KEY",
+    "api_key": null,
+    "timeout_seconds": 120,
+    "max_retries": 3,
+    "temperature": 1.0,
+    "max_output_tokens": 2000,
+    "mock": false
+  },
+  "agent": {
+    "data_dir": "./data",
+    "mode": "heartbeat",
+    "heartbeat_minutes": 30,
+    "min_step_gap_seconds": 60,
+    "step_timeout_minutes": 45,
+    "context_recent_steps": 10,
+    "serendipity_rate": 0.3,
+    "soul_max_chars": 8000,
+    "consecutive_error_backoff": 5
+  },
+  "chat": {
+    "record_default": false,
+    "idle_end_seconds": 180,
+    "preempt_max_wait_minutes": 30,
+    "preempt_poll_seconds": 2
+  },
+  "sandbox": {
+    "enabled": true,
+    "timeout_seconds": 10,
+    "backend": "auto"
+  },
+  "skills": {
+    "enabled": true,
+    "timeout_seconds": 20,
+    "auto_disable_after_failures": 3
+  },
+  "web_actions": {
+    "enabled": true,
+    "http_timeout_seconds": 20,
+    "max_page_kb": 500
+  },
+  "knowledge": {
+    "max_tool_rounds": 5,
+    "fts_snippet_len": 200
+  },
+  "report": {
+    "time": "22:00",
+    "timezone": "Asia/Seoul",
+    "language": "ko"
+  },
+  "web": {
+    "host": "127.0.0.1",
+    "port": 8000,
+    "sse_check_ms": 1000
+  }
+}

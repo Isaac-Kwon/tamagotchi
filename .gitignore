@@ -1,0 +1,13 @@
+# Local configuration (secrets) — commit config.example.json instead
+config.json
+
+# Agent data directory (has its own git repo)
+data/
+
+# Python virtual environment
+.venv/
+
+# Python caches
+__pycache__/
+*.pyc
+.pytest_cache/
