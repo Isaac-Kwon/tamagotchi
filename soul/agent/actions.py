@@ -37,30 +37,49 @@ BUILTIN_ACTIONS: dict[str, str] = {
 # Conditional actions — only offered when their precondition holds.
 READ_INBOX = ("read_inbox", "read what an observer left for you")
 
+# Prefix for self-authored skills in the action list (spec P8). Neutral framing.
+SKILL_PREFIX = "skill:"
 
-def available_actions(*, inbox_pending: bool = False) -> list[dict[str, str]]:
+
+def skill_action_name(skill: str) -> str:
+    return f"{SKILL_PREFIX}{skill}"
+
+
+def available_actions(
+    *, inbox_pending: bool = False, skills: list[str] | None = None
+) -> list[dict[str, str]]:
     """Return the currently available actions as ``{name, description}``.
 
     ``read_inbox`` is included only when ``inbox_pending`` is true (spec P3).
-    Extension point (P8): append enabled ``skill:<name>`` entries here.
+    Enabled self-authored ``skill:<name>`` entries (spec P8) are appended, listed
+    neutrally among the built-ins so the agent is not steered toward or away from
+    its own skills.
     """
     actions = [{"name": name, "description": desc} for name, desc in BUILTIN_ACTIONS.items()]
     if inbox_pending:
         actions.append({"name": READ_INBOX[0], "description": READ_INBOX[1]})
+    for skill in skills or []:
+        actions.append({
+            "name": skill_action_name(skill),
+            "description": "run something you defined earlier",
+        })
     return actions
 
 
 def shuffled_actions(
-    *, inbox_pending: bool = False, rng: random.Random | None = None
+    *, inbox_pending: bool = False, skills: list[str] | None = None,
+    rng: random.Random | None = None,
 ) -> list[dict[str, str]]:
     """Available actions with order shuffled every step (spec P2: no position bias)."""
-    actions = available_actions(inbox_pending=inbox_pending)
+    actions = available_actions(inbox_pending=inbox_pending, skills=skills)
     r = rng or random
     r.shuffle(actions)
     return actions
 
 
-def is_known_action(name: Any, *, inbox_pending: bool = False) -> bool:
+def is_known_action(
+    name: Any, *, inbox_pending: bool = False, skills: list[str] | None = None
+) -> bool:
     """True if ``name`` is a currently offerable action."""
     if not isinstance(name, str):
         return False
@@ -68,4 +87,6 @@ def is_known_action(name: Any, *, inbox_pending: bool = False) -> bool:
         return True
     if name == READ_INBOX[0]:
         return inbox_pending
+    if name.startswith(SKILL_PREFIX):
+        return name[len(SKILL_PREFIX):] in (skills or [])
     return False

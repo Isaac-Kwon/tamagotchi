@@ -40,6 +40,7 @@ class RecallContext:
     serendipity_note: str | None = None  # text of a resurfaced past note (P2)
     serendipity_note_path: str | None = None  # its data-relative path (journal)
     inbox_messages: list[dict[str, Any]] = field(default_factory=list)  # delivered
+    skill_notices: list[str] = field(default_factory=list)  # auto-disabled skills (P8)
 
     def to_block(self) -> str:
         """Render the recall context as a plain-text block for the ACT prompt."""
@@ -73,6 +74,11 @@ class RecallContext:
         if self.inbox_messages:
             lines = [f"- {m.get('text', '')}" for m in self.inbox_messages]
             parts.append("Something an observer left for you:\n" + "\n".join(lines))
+
+        # --- M8: notice about your own skills ----------------------------- #
+        if self.skill_notices:
+            lines = [f"- {n}" for n in self.skill_notices]
+            parts.append("Notice about your skills:\n" + "\n".join(lines))
 
         return "\n\n".join(parts)
 
@@ -142,6 +148,7 @@ def assemble_context(
     serendipity_rate: float = 0.0,
     rng: random.Random | None = None,
     inbox_messages: list[dict[str, Any]] | None = None,
+    skill_notices: list[str] | None = None,
 ) -> RecallContext:
     """Build the recall context for the upcoming step.
 
@@ -159,6 +166,7 @@ def assemble_context(
         recent_steps=recent,
         thread=thread,
         inbox_messages=list(inbox_messages or []),
+        skill_notices=list(skill_notices or []),
     )
 
     r = rng or random

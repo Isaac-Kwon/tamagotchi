@@ -33,7 +33,7 @@ from ..paths import DataPaths
 from ..storage import inbox, journal, state as state_store
 from . import actions as actions_mod
 from . import context as context_mod
-from . import prompts, sandbox, soul
+from . import prompts, sandbox, skill_runner, skills as skills_mod, soul
 from .llm import LLMError, TranscriptRecorder, run_tool_loop
 from .preempt import StepController, StepTimeout
 
@@ -155,6 +155,29 @@ def _run_code_experiment(
     return content + note, result.backend
 
 
+def _run_skill_action(
+    cfg: Config, paths: DataPaths, skill_name: str, topic: str
+) -> tuple[str, str, str | None]:
+    """Execute a self-authored ``skill:<name>`` action out-of-process (spec P8).
+
+    The skill is given a simple, neutral params dict — ``{"topic": <act topic>}``
+    — and its returned markdown becomes this step's content. A timeout, crash, or
+    malformed output is turned into a "skill failed" markdown result: the step
+    still proceeds (the loop never dies) and the skill's failure counter advances,
+    auto-disabling it at the configured threshold. Returns
+    ``(content, skill_used, sandbox_backend)``.
+    """
+    result = skill_runner.run_skill(cfg, paths, skill_name, {"topic": topic})
+    if result.ok:
+        skills_mod.record_success(paths, skill_name)
+    else:
+        skills_mod.record_failure(
+            paths, skill_name,
+            auto_disable_after=cfg.skills.auto_disable_after_failures,
+        )
+    return result.output, skill_name, result.backend
+
+
 def run_step(
     cfg: Config,
     paths: DataPaths,
@@ -224,15 +247,27 @@ def _run_step_body(
     delivered = inbox.drain(paths)
     inbox_delivered_ids = [m.get("id") for m in delivered if m.get("id")]
 
+    # Self-authored skills (spec P8): the enabled ones become skill:<name> actions
+    # this step; a one-time notice about any auto-disabled skill is surfaced now.
+    if cfg.skills.enabled:
+        enabled_skills = skills_mod.list_enabled(paths)
+        skill_notices = skills_mod.drain_notices(paths)
+    else:
+        enabled_skills = []
+        skill_notices = []
+
     ctx = context_mod.assemble_context(
         paths,
         recent_steps_n=cfg.agent.context_recent_steps,
         serendipity_rate=cfg.agent.serendipity_rate,
         inbox_messages=delivered,
+        skill_notices=skill_notices,
     )
 
     # 2. ACT call — a small tool-use loop (wiki always; web too) (spec P3.5).
-    act_actions = actions_mod.shuffled_actions(inbox_pending=bool(delivered))
+    act_actions = actions_mod.shuffled_actions(
+        inbox_pending=bool(delivered), skills=enabled_skills
+    )
     act_messages = prompts.build_act_messages(
         context_block=ctx.to_block(), actions=act_actions
     )
@@ -246,7 +281,9 @@ def _run_step_body(
         web_visits.extend(result.web_visits)
         return result.content
 
-    act_tools = knowledge_tools.act_tools(include_web=cfg.web_actions.enabled)
+    act_tools = knowledge_tools.act_tools(
+        include_web=cfg.web_actions.enabled, include_skills=cfg.skills.enabled
+    )
 
     # Boundary before ACT: enforce the deadline / yield to a live chat (P5/P7).
     _boundary("act", act_messages)
@@ -272,7 +309,9 @@ def _run_step_body(
         )
 
     action = act_json.get("action")
-    if not actions_mod.is_known_action(action, inbox_pending=bool(delivered)):
+    if not actions_mod.is_known_action(
+        action, inbox_pending=bool(delivered), skills=enabled_skills
+    ):
         # Neutral fallback rather than failing the step.
         action = "free_write"
     topic = str(act_json.get("topic") or "").strip() or "(untitled)"
@@ -280,10 +319,18 @@ def _run_step_body(
     progress["action"] = action
     progress["topic"] = topic
 
-    # 2b. code_experiment: run the snippet through the sandbox ladder (spec P3).
+    # 2b. code_experiment / skill:<name>: run out-of-process via the sandbox
+    # ladder (spec P3/P8). A skill's markdown output replaces the step content;
+    # a failed skill yields failure text but never fails the step.
     sandbox_backend = None
+    skill_used = None
     if action == "code_experiment" and cfg.sandbox.enabled:
         content, sandbox_backend = _run_code_experiment(cfg, paths, content)
+    elif action.startswith(actions_mod.SKILL_PREFIX) and cfg.skills.enabled:
+        skill_name = action[len(actions_mod.SKILL_PREFIX):]
+        content, skill_used, sandbox_backend = _run_skill_action(
+            cfg, paths, skill_name, topic
+        )
 
     # 3. Save the ACT output to notes/.
     note_name = f"{step_id}.md"
@@ -376,6 +423,7 @@ def _run_step_body(
         transcript_path=f"transcripts/{step_id}.jsonl",
         wiki_ops=wiki_ops,
         web_visits=web_visits,
+        skill_used=skill_used,
         sandbox_backend=sandbox_backend,
         inbox_delivered=inbox_delivered_ids,
         llm=llm_meta,
