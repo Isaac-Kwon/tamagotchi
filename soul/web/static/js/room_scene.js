@@ -435,6 +435,12 @@ export class RoomScene extends Phaser.Scene {
     this.bubbleContainer.setVisible(false);
     this.character.add(this.bubbleContainer);
 
+    // Click the speech bubble -> emit an event main.js wires to the step
+    // detail panel. Hit area is (re)sized in _showBubble() to match text.
+    this.bubbleContainer.on("pointerdown", () => {
+      this.events.emit("bubbleClick", this._lastStepId);
+    });
+
     this._drawFace("neutral");
     this._startBob();
   }
@@ -551,6 +557,7 @@ export class RoomScene extends Phaser.Scene {
     }
     if (!text) {
       this.bubbleContainer.setVisible(false);
+      if (this.bubbleContainer.input) this.bubbleContainer.disableInteractive();
       return;
     }
     this.bubbleTextObj.setText(text.length > 120 ? text.slice(0, 117) + "…" : text);
@@ -562,6 +569,8 @@ export class RoomScene extends Phaser.Scene {
     this.bubbleBg.lineStyle(1.5, 0x333333, 1);
     this.bubbleBg.fillRoundedRect(-w / 2, -h / 2, w, h, 8);
     this.bubbleBg.strokeRoundedRect(-w / 2, -h / 2, w, h, 8);
+    this.bubbleContainer.setInteractive(new Phaser.Geom.Rectangle(-w / 2, -h / 2, w, h), Phaser.Geom.Rectangle.Contains);
+    this.bubbleContainer.input.cursor = "pointer";
     this.bubbleContainer.setVisible(true);
     this._bubbleTimer = setTimeout(() => {
       this.bubbleContainer.setVisible(false);
