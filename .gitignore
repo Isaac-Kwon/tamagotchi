@@ -12,7 +12,3 @@ data/
 __pycache__/
 *.pyc
 .pytest_cache/
-
-# Runtime-generated placeholder web client (the real UI is built separately).
-# create_app() writes soul/web/static/index.html only when the dir is empty.
-soul/web/static/
