@@ -1,11 +1,14 @@
 """Entry point for the agent loop.
 
-Milestone M1 supports a single wake step under mock or a real key:
-
+    python run_agent.py                   # long-running scheduler (default, M5)
+    python run_agent.py --once            # a single wake step, then exit
     python run_agent.py --once --mock     # one step with the FakeLLM
-    python run_agent.py --once            # one step with the real LLM
+    python run_agent.py --mock            # long-running scheduler under the FakeLLM
 
-The continuous / heartbeat scheduler arrives in M5.
+The default is the long-running scheduler (heartbeat or continuous per config),
+which also emits the daily report and enforces chat preemption. The
+``agent.lock`` is held for the whole process lifetime so a second instance is
+refused (spec P5). ``scripts/start_agent.ps1`` wraps this with auto-restart.
 """
 
 from __future__ import annotations
@@ -13,10 +16,10 @@ from __future__ import annotations
 import argparse
 import sys
 
-from soul.agent import loop
+from soul.agent import loop, scheduler
 from soul.agent.fake_llm import FakeLLM
-from soul.agent.lock import AgentLock, LockError
 from soul.agent.llm import LLMClient
+from soul.agent.lock import AgentLock, LockError
 from soul.config import ConfigError, load_config
 from soul.paths import init_data_dir
 
@@ -52,26 +55,31 @@ def main(argv: list[str] | None = None) -> int:
     paths = init_data_dir(cfg.agent.data_dir)
     llm = _make_llm(cfg)
 
-    if not args.once:
-        print(
-            "Only --once is supported in this milestone (M1). "
-            "The scheduler arrives in M5.",
-            file=sys.stderr,
-        )
-        return 2
-
     try:
         with AgentLock(paths.agent_lock):
-            record = loop.run_step(cfg, paths, llm)
+            if args.once:
+                record = loop.run_step(cfg, paths, llm)
+                print(
+                    f"Step {record['id']} done: kind={record['kind']} "
+                    f"action={record.get('action')} decision={record.get('decision')}"
+                )
+                if record.get("soul_updated"):
+                    print(f"  SOUL.md updated -> commit {record.get('soul_commit')}")
+                return 0
+
+            # Long-running scheduler (default). Blocks until interrupted.
+            print(
+                f"Agent scheduler starting (mode={cfg.agent.mode}, "
+                f"heartbeat={cfg.agent.heartbeat_minutes}m). Ctrl-C to stop."
+            )
+            try:
+                scheduler.run_scheduler(cfg, paths, llm)
+            except KeyboardInterrupt:
+                print("Scheduler stopped.")
+            return 0
     except LockError as exc:
         print(f"Another agent instance is running: {exc}", file=sys.stderr)
         return 3
-
-    print(f"Step {record['id']} done: kind={record['kind']} "
-          f"action={record.get('action')} decision={record.get('decision')}")
-    if record.get("soul_updated"):
-        print(f"  SOUL.md updated -> commit {record.get('soul_commit')}")
-    return 0
 
 
 if __name__ == "__main__":
