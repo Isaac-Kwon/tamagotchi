@@ -5,23 +5,38 @@
 # wrapper. The agent.lock refuses a second live instance, so this never
 # double-starts.
 #
+# Python runs on WSL by default (project rule); pass -NoWsl to force the
+# Windows venv instead.
+#
 # Usage:  powershell -ExecutionPolicy Bypass -File scripts\start_agent.ps1
 
 param(
-    [string]$Python = ".\.venv\Scripts\python.exe",
-    [string]$Config = "config.json"
+    [string]$Config = "config.json",
+    [switch]$NoWsl
 )
 
 $ErrorActionPreference = "Stop"
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-Set-Location (Split-Path -Parent $scriptRoot)
+$repoRoot = Split-Path -Parent $scriptRoot
+Set-Location $repoRoot
+
+# /mnt/<drive>/<path> form of the repo root, for wsl invocations
+$drive = $repoRoot.Substring(0, 1).ToLower()
+$wslRoot = "/mnt/$drive" + $repoRoot.Substring(2).Replace("\", "/")
+
+$useWsl = (-not $NoWsl) -and (Get-Command wsl -ErrorAction SilentlyContinue) -and (Test-Path ".venv-wsl")
 
 $backoff = 1
 $maxBackoff = 300
 
 while ($true) {
-    Write-Host "[start_agent] launching agent loop..."
-    & $Python run_agent.py --config $Config
+    if ($useWsl) {
+        Write-Host "[start_agent] launching agent loop (WSL)..."
+        wsl -- bash -lc "cd '$wslRoot' && .venv-wsl/bin/python run_agent.py --config '$Config'"
+    } else {
+        Write-Host "[start_agent] launching agent loop (Windows venv)..."
+        & ".\.venv\Scripts\python.exe" run_agent.py --config $Config
+    }
     $code = $LASTEXITCODE
 
     if ($code -eq 0) {
