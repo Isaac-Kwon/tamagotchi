@@ -351,6 +351,35 @@ def _fts_query(query: str) -> str:
     return " OR ".join(tokens)
 
 
+def graph(paths: DataPaths) -> dict[str, Any]:
+    """Return the wiki link graph as ``{nodes:[{id,title}], links:[{src,dst}]}``.
+
+    Nodes are every page (from the md files); links come from the derived index.
+    Both are rebuilt-safe (``ensure_index`` runs first).
+    """
+    ensure_index(paths)
+    nodes = [{"id": p["slug"], "title": p["title"]} for p in list_pages(paths)]
+    conn = _connect(paths)
+    try:
+        try:
+            rows = conn.execute("SELECT src, dst FROM links ORDER BY src, dst").fetchall()
+        except sqlite3.OperationalError:
+            rows = []
+        links = [{"src": r["src"], "dst": r["dst"]} for r in rows]
+    finally:
+        conn.close()
+    return {"nodes": nodes, "links": links}
+
+
+def page_updated(paths: DataPaths, slug: str) -> str | None:
+    """The ``updated`` frontmatter timestamp of a page, if present."""
+    path = paths.wiki_file(slug)
+    if not path.exists():
+        return None
+    fm, _ = parse_page(path.read_text(encoding="utf-8"))
+    return fm.get("updated")
+
+
 def backlinks(paths: DataPaths, slug: str) -> list[str]:
     """Return the slugs of pages that link TO ``slug`` (via the index)."""
     ensure_index(paths)
