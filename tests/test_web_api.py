@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -88,6 +89,45 @@ def test_state_stale_when_old(client):
     data = json.loads(p.read_text(encoding="utf-8"))
     data["updated_at"] = "2000-01-01T00:00:00+00:00"
     p.write_text(json.dumps(data), encoding="utf-8")
+    assert client.get("/api/state").json()["stale"] is True
+
+
+def _patch_state(paths, **fields):
+    """Rewrite state.json fields directly (write_state would reset updated_at)."""
+    p = paths.state_json
+    data = json.loads(p.read_text(encoding="utf-8"))
+    data.update(fields)
+    p.write_text(json.dumps(data), encoding="utf-8")
+
+
+def test_state_not_stale_mid_step_continuous(client):
+    """A step silently running for minutes is normal, not stale (spec P5).
+
+    In continuous mode the between-step gap is 60s but a real step (LLM +
+    tool loop) takes minutes; mid-step must not be reported stale.
+    """
+    client._config.agent.mode = "continuous"
+    now = datetime.now(timezone.utc)
+    _patch_state(
+        client._paths,
+        updated_at=(now - timedelta(minutes=5)).isoformat(),
+        next_wake_at=(now - timedelta(minutes=4)).isoformat(),
+    )
+    body = client.get("/api/state").json()
+    assert body["stale"] is False
+    assert body["stale_at"] is not None
+
+
+def test_state_stale_past_step_deadline_continuous(client):
+    """Silence beyond next_wake_at + step_timeout means the loop is dead."""
+    client._config.agent.mode = "continuous"
+    timeout_min = client._config.agent.step_timeout_minutes
+    now = datetime.now(timezone.utc)
+    _patch_state(
+        client._paths,
+        updated_at=(now - timedelta(minutes=timeout_min + 20)).isoformat(),
+        next_wake_at=(now - timedelta(minutes=timeout_min + 5)).isoformat(),
+    )
     assert client.get("/api/state").json()["stale"] is True
 
 

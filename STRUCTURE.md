@@ -130,7 +130,7 @@ data/
 
 | 메서드 | 경로 | 설명 |
 |---|---|---|
-| GET | `/api/state` | 현재 `state.json` 스냅샷 + `stale` 플래그(2×주기 초과 시 true). |
+| GET | `/api/state` | 현재 `state.json` 스냅샷 + `stale` 플래그(`next_wake_at`+`step_timeout_minutes`까지 무소식이면 true — 진행 중인 스텝은 stale 아님) + `stale_at`(그 기준 시각). |
 | GET | `/api/events` | SSE. `state.json` 변경마다 `event: state`로 동일 스냅샷 push. |
 | GET | `/api/steps?limit=50` | 저널 스텝 목록(최신순). |
 | GET | `/api/step/{step_id}` | 스텝 레코드 + `content_path`의 본문. |

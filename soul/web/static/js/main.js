@@ -16,6 +16,15 @@ const STALE_MULTIPLIER = 2;
 function computeStale(state) {
   if (!state) return true;
   if (state.stale === true) return true;
+  // Preferred: the server says when this snapshot becomes stale (stale_at
+  // accounts for the running step's hard timeout — a silent multi-minute step
+  // is normal, especially in continuous mode). Judged on the client clock so
+  // the flag can flip even when no new SSE event ever arrives.
+  if (state.stale_at) {
+    const staleMs = new Date(state.stale_at).getTime();
+    if (!isNaN(staleMs)) return Date.now() > staleMs;
+  }
+  // Fallback for payloads without stale_at (e.g. the mock transport).
   if (!state.updated_at) return false; // no timestamp to judge by; don't assume stale
   const updatedMs = new Date(state.updated_at).getTime();
   if (isNaN(updatedMs)) return false;
@@ -102,20 +111,39 @@ function boot() {
 
     let latestState = null;
 
+    function render() {
+      const stale = computeStale(latestState);
+      let effective = latestState;
+      if (latestState) {
+        // The scene reads state.stale — feed it the client-side judgment so
+        // the room and the status bar can never disagree.
+        effective = { ...latestState, stale };
+        if (chattingOverride) effective.status = "chatting";
+      }
+      scene.applyState(effective);
+      setStatusBar(latestState, stale);
+    }
+
     const unsubscribe = subscribeState(
       (state, transport) => {
         latestState = state;
         setConnStatus(transport === "sse" ? "실시간 연결" : "폴링 모드 (5초)");
-        const stale = computeStale(state);
-        const effective = chattingOverride && state ? { ...state, status: "chatting" } : state;
-        scene.applyState(effective);
-        setStatusBar(state, stale);
+        render();
         panels.refreshRevealed();
       },
       { pollMs: 5000 }
     );
 
-    window.addEventListener("beforeunload", () => unsubscribe());
+    // SSE only fires on state.json changes: a dead agent loop stops producing
+    // events, so staleness must be re-judged on a timer to ever flip the UI.
+    const staleTimer = setInterval(() => {
+      if (latestState) render();
+    }, 10000);
+
+    window.addEventListener("beforeunload", () => {
+      clearInterval(staleTimer);
+      unsubscribe();
+    });
 
     // Initial empty-state render in case no update arrives immediately
     // (fresh install / server not reachable yet) — show an idle room, not

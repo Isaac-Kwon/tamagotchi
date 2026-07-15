@@ -8,7 +8,7 @@ logs, control/chat.json), all funnelled through dedicated modules.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -53,24 +53,53 @@ def _base_interval_seconds(cfg: Config) -> float:
     return float(cfg.agent.heartbeat_minutes * 60)
 
 
-def _is_stale(cfg: Config, st: dict[str, Any]) -> bool:
-    """updated_at older than 2x the expected interval => stale (spec P5)."""
-    updated = st.get("updated_at")
-    if not updated:
-        return True
+def _parse_ts(value: Any) -> datetime | None:
+    if not value:
+        return None
     try:
-        ts = datetime.fromisoformat(updated)
+        ts = datetime.fromisoformat(value)
     except (TypeError, ValueError):
-        return True
+        return None
     if ts.tzinfo is None:
         ts = ts.replace(tzinfo=timezone.utc)
-    age = (datetime.now(timezone.utc) - ts).total_seconds()
-    return age > 2 * _base_interval_seconds(cfg)
+    return ts
+
+
+def stale_deadline(cfg: Config, st: dict[str, Any]) -> datetime | None:
+    """Latest instant by which a live agent loop must have written state.json.
+
+    The loop only writes state at step end, and a step is never killed for
+    running long (spec P5): after a write it may sleep until ``next_wake_at``
+    and then stay silent for a whole step, up to the hard
+    ``step_timeout_minutes`` deadline — which itself ends in a write even on
+    timeout. Silence within that window is a normal long step (in continuous
+    mode the between-step gap is seconds but steps run minutes); only silence
+    beyond it is evidence of a dead loop. Returns None when there is no
+    timestamp to judge by.
+    """
+    updated = _parse_ts(st.get("updated_at"))
+    if updated is None:
+        return None
+    anchor = updated + timedelta(seconds=_base_interval_seconds(cfg))
+    next_wake = _parse_ts(st.get("next_wake_at"))
+    if next_wake is not None and next_wake > anchor:
+        anchor = next_wake
+    return anchor + timedelta(minutes=cfg.agent.step_timeout_minutes)
+
+
+def _is_stale(cfg: Config, st: dict[str, Any]) -> bool:
+    """No state write by the stale deadline => the loop looks dead (spec P5)."""
+    deadline = stale_deadline(cfg, st)
+    return deadline is None or datetime.now(timezone.utc) > deadline
 
 
 def state_snapshot(cfg: Config, paths: DataPaths) -> dict[str, Any]:
     st = dict(state_store.read_state(paths.state_json))
-    st["stale"] = _is_stale(cfg, st)
+    deadline = stale_deadline(cfg, st)
+    st["stale"] = deadline is None or datetime.now(timezone.utc) > deadline
+    # stale_at lets the client flip to stale on its own clock: SSE only pushes
+    # on state.json changes, so a dead loop sends no event carrying stale=true.
+    st["stale_at"] = deadline.isoformat() if deadline is not None else None
     return st
 
 
