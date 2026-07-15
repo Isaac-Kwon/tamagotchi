@@ -138,6 +138,27 @@ class DataPaths:
     def note_file(self, name: str) -> Path:
         return self.notes_dir / name
 
+    # -- wiki + derived index (M3) ------------------------------------------ #
+    def wiki_file(self, slug: str) -> Path:
+        return self.wiki_dir / f"{slug}.md"
+
+    @property
+    def wiki_index_db(self) -> Path:
+        return self.index_dir / "wiki.sqlite3"
+
+    # -- inbox queue (M2) --------------------------------------------------- #
+    @property
+    def inbox_pending(self) -> Path:
+        return self.inbox_dir / "pending.jsonl"
+
+    @property
+    def inbox_delivered(self) -> Path:
+        return self.inbox_dir / "delivered.jsonl"
+
+    @property
+    def inbox_lock(self) -> Path:
+        return self.inbox_dir / "inbox.lock"
+
 
 # --------------------------------------------------------------------------- #
 # Git helpers (subprocess — the data dir has its own repo)
