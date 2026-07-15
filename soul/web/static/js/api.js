@@ -1,0 +1,342 @@
+// api.js — thin client for the Soul Tamagotchi web API.
+//
+// Contract (same-origin, base path ""):
+//   GET  /api/state
+//   GET  /api/steps?limit=N
+//   GET  /api/step/{id}
+//   GET  /api/step/{id}/transcript
+//   GET  /api/soul
+//   GET  /api/soul/history
+//   GET  /api/soul/diff/{commit}
+//   GET  /api/reports
+//   GET  /api/report/{date}
+//   GET  /api/revealed
+//   GET  /api/wiki/pages
+//   GET  /api/wiki/search?q=
+//   GET  /api/wiki/page/{slug}
+//   GET  /api/wiki/graph
+//   SSE  /api/events               (event name "state", data = state JSON)
+//   POST /api/chat                 {message, session_id|null, record}
+//   POST /api/chat/end             {session_id}
+//   GET  /api/chat/{session_id}
+//   POST /api/inbox                {kind:"message"|"gift", content, url?}
+//
+// Mock mode: append ?mock=1 to the page URL to serve canned in-JS fixtures
+// instead of hitting the network. Useful for UI development without a
+// running API server, and for offline verification. Keep this in the code;
+// it is genuinely useful after M7 too.
+
+const MOCK = new URLSearchParams(location.search).get("mock") === "1";
+
+// ---------------------------------------------------------------------------
+// Mock fixtures
+// ---------------------------------------------------------------------------
+
+const MOCK_ACTIONS = [
+  "free_write",
+  "revisit_notes",
+  "organize_notes",
+  "thought_experiment",
+  "code_experiment",
+  "web_explore",
+  "read_inbox",
+  "rest",
+  "skill:doodle",
+  "idle",
+];
+const MOCK_DECISIONS = ["deepen", "new", "shelve", "abandon"];
+const MOCK_MOODS = ["neutral", "curious", "excited", "calm", "bored", "frustrated", "tired", "proud"];
+
+let mockStepCounter = 0;
+let mockCurrentAction = MOCK_ACTIONS[0];
+
+function mockLastStep() {
+  const n = mockStepCounter;
+  return {
+    id: `step-${String(n).padStart(6, "0")}`,
+    ts: new Date().toISOString(),
+    kind: "wake_step",
+    action: mockCurrentAction,
+    topic: "목업 주제 " + n,
+    thread_id: "th-mock",
+    interest: 1 + ((n * 3) % 10),
+    interest_delta: ["more", "less", "same", "first"][n % 4],
+    mood: MOCK_MOODS[n % MOCK_MOODS.length],
+    reason: "목업 이유 텍스트입니다.",
+    decision: MOCK_DECISIONS[n % MOCK_DECISIONS.length],
+    summary: `[목업] ${mockCurrentAction} 을(를) 하는 중 (스텝 ${n})`,
+    wiki_ops: n % 3 === 0 ? [{ tool: "wiki_write", slug: "mock-page" }] : [],
+  };
+}
+
+function mockState() {
+  return {
+    status: "awake",
+    stale: false,
+    last_step: mockLastStep(),
+    current_thread: { topic: "목업 스레드", steps: 3, interest_series: [4, 5, 7] },
+    shelved_threads: [{ thread_id: "th-old", topic: "예전 관심사" }],
+    revealed: {
+      top_threads: [{ topic: "예전 관심사", revisits: 2, persistence_steps: 5 }],
+      stated_vs_revealed_note: "stated 흥미는 대체로 revealed보다 높게 나타납니다 (목업 데이터).",
+    },
+    next_wake_at: new Date(Date.now() + 5 * 60000).toISOString(),
+    today_report: null,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+const MOCK_SOUL_MD = `# SOUL\n\n(목업 모드) 아직 거의 비어 있습니다.\n`;
+
+const MOCK_WIKI_PAGES = [
+  { slug: "mock-page", title: "목업 페이지", updated: new Date().toISOString() },
+  { slug: "another-page", title: "다른 페이지", updated: new Date().toISOString() },
+];
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function mockFetch(path, opts) {
+  await delay(60 + Math.random() * 80);
+  const url = new URL(path, location.origin);
+  const p = url.pathname;
+  const method = (opts && opts.method) || "GET";
+
+  if (p === "/api/state") return mockState();
+  if (p === "/api/steps") {
+    const limit = Number(url.searchParams.get("limit")) || 20;
+    const steps = [];
+    for (let i = 0; i < Math.min(limit, 10); i++) {
+      mockStepCounter++;
+      mockCurrentAction = MOCK_ACTIONS[mockStepCounter % MOCK_ACTIONS.length];
+      steps.push(mockLastStep());
+    }
+    return { steps: steps.reverse() };
+  }
+  if (p.startsWith("/api/step/") && p.endsWith("/transcript")) {
+    return {
+      entries: [
+        { role: "system", content: "(mock) system prompt excerpt" },
+        { role: "assistant", content: "(mock) reasoning/tool call excerpt" },
+      ],
+    };
+  }
+  if (p.startsWith("/api/step/")) {
+    return { record: mockLastStep(), content: "# 목업 산출물\n\n본문 텍스트입니다." };
+  }
+  if (p === "/api/soul") return { content: MOCK_SOUL_MD, updated_at: new Date().toISOString() };
+  if (p === "/api/soul/history") {
+    return {
+      commits: [
+        { commit: "abc1234", ts: new Date().toISOString(), message: "soul: 목업 변경 1" },
+        { commit: "def5678", ts: new Date(Date.now() - 86400000).toISOString(), message: "soul: 목업 변경 0" },
+      ],
+    };
+  }
+  if (p.startsWith("/api/soul/diff/")) {
+    return { diff: "--- a/SOUL.md\n+++ b/SOUL.md\n@@ -1 +1,2 @@\n (목업 diff)\n+새 줄\n" };
+  }
+  if (p === "/api/reports") {
+    const today = new Date().toISOString().slice(0, 10);
+    return { dates: [today] };
+  }
+  if (p.startsWith("/api/report/")) {
+    return { date: p.split("/").pop(), content: "오늘의 회고 (목업).\n\n특별한 일은 없었다." };
+  }
+  if (p === "/api/revealed") {
+    return (await mockState()).revealed;
+  }
+  if (p === "/api/wiki/pages") return { pages: MOCK_WIKI_PAGES };
+  if (p === "/api/wiki/search") {
+    const q = url.searchParams.get("q") || "";
+    return { results: MOCK_WIKI_PAGES.filter((pg) => pg.title.includes(q) || !q).map((pg) => ({ ...pg, snippet: "…검색 스니펫…" })) };
+  }
+  if (p.startsWith("/api/wiki/page/")) {
+    const slug = p.split("/").pop();
+    return { slug, content: `# ${slug}\n\n목업 위키 본문. [[another-page]] 링크 포함.`, backlinks: ["another-page"] };
+  }
+  if (p === "/api/wiki/graph") {
+    return {
+      nodes: MOCK_WIKI_PAGES.map((pg) => ({ id: pg.slug, title: pg.title })),
+      links: [{ src: "mock-page", dst: "another-page" }],
+    };
+  }
+  if (p === "/api/chat" && method === "POST") {
+    return { session_id: "mock-session", reply: "(목업) 안녕하세요, 대화는 기록되지 않는 모드입니다." };
+  }
+  if (p === "/api/chat/end" && method === "POST") return { ok: true };
+  if (p.startsWith("/api/chat/")) return { session_id: p.split("/").pop(), turns: [] };
+  if (p === "/api/inbox" && method === "POST") return { ok: true };
+
+  return { error: "mock: unknown path " + p };
+}
+
+// ---------------------------------------------------------------------------
+// Real fetch helpers
+// ---------------------------------------------------------------------------
+
+async function request(path, opts) {
+  if (MOCK) return mockFetch(path, opts);
+  const res = await fetch(path, {
+    headers: { "Content-Type": "application/json", ...(opts && opts.headers) },
+    ...opts,
+  });
+  if (!res.ok) {
+    let bodyText = "";
+    try {
+      bodyText = await res.text();
+    } catch (_e) {
+      /* ignore */
+    }
+    throw new Error(`API ${path} -> ${res.status} ${res.statusText} ${bodyText}`.trim());
+  }
+  // Some endpoints (e.g. chat/end) may return empty body.
+  const text = await res.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch (_e) {
+    throw new Error(`API ${path} -> invalid JSON response`);
+  }
+}
+
+function get(path) {
+  return request(path, { method: "GET" });
+}
+
+function post(path, body) {
+  return request(path, { method: "POST", body: JSON.stringify(body || {}) });
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+export const api = {
+  isMock: MOCK,
+
+  getState: () => get("/api/state"),
+  getSteps: (limit = 20) => get(`/api/steps?limit=${encodeURIComponent(limit)}`),
+  getStep: (id) => get(`/api/step/${encodeURIComponent(id)}`),
+  getStepTranscript: (id) => get(`/api/step/${encodeURIComponent(id)}/transcript`),
+
+  getSoul: () => get("/api/soul"),
+  getSoulHistory: () => get("/api/soul/history"),
+  getSoulDiff: (commit) => get(`/api/soul/diff/${encodeURIComponent(commit)}`),
+
+  getReports: () => get("/api/reports"),
+  getReport: (date) => get(`/api/report/${encodeURIComponent(date)}`),
+
+  getRevealed: () => get("/api/revealed"),
+
+  getWikiPages: () => get("/api/wiki/pages"),
+  searchWiki: (q) => get(`/api/wiki/search?q=${encodeURIComponent(q || "")}`),
+  getWikiPage: (slug) => get(`/api/wiki/page/${encodeURIComponent(slug)}`),
+  getWikiGraph: () => get("/api/wiki/graph"),
+
+  sendChat: (message, sessionId, record) =>
+    post("/api/chat", { message, session_id: sessionId || null, record: !!record }),
+  endChat: (sessionId) => post("/api/chat/end", { session_id: sessionId }),
+  getChatSession: (sessionId) => get(`/api/chat/${encodeURIComponent(sessionId)}`),
+
+  postInbox: (kind, content, url) => post("/api/inbox", { kind, content, url }),
+};
+
+// ---------------------------------------------------------------------------
+// Live updates: SSE with reconnect backoff, falling back to polling.
+// onState(stateObj) is called on every update, from either transport.
+// Returns a function to stop the subscription.
+// ---------------------------------------------------------------------------
+
+export function subscribeState(onState, opts = {}) {
+  const pollMs = opts.pollMs || 5000;
+  let stopped = false;
+  let es = null;
+  let pollTimer = null;
+  let backoffMs = 1000;
+  const maxBackoffMs = 30000;
+
+  function startPolling() {
+    if (pollTimer || stopped) return;
+    const tick = async () => {
+      if (stopped) return;
+      try {
+        const state = await api.getState();
+        onState(state, "poll");
+      } catch (_e) {
+        // swallow; UI treats missing/stale updates via updated_at staleness check
+      }
+      if (!stopped) pollTimer = setTimeout(tick, pollMs);
+    };
+    tick();
+  }
+
+  function stopPolling() {
+    if (pollTimer) {
+      clearTimeout(pollTimer);
+      pollTimer = null;
+    }
+  }
+
+  function startSSE() {
+    if (MOCK) {
+      // No real SSE in mock mode; mock transport is polling-only, which
+      // exercises the same onState/staleness code paths in the UI.
+      startPolling();
+      return;
+    }
+    if (typeof EventSource === "undefined") {
+      startPolling();
+      return;
+    }
+    try {
+      es = new EventSource("/api/events");
+    } catch (_e) {
+      startPolling();
+      return;
+    }
+
+    es.addEventListener("state", (ev) => {
+      backoffMs = 1000; // reset backoff on any successful message
+      try {
+        const state = JSON.parse(ev.data);
+        onState(state, "sse");
+      } catch (_e) {
+        // ignore malformed event
+      }
+    });
+
+    es.onerror = () => {
+      if (stopped) return;
+      if (es) {
+        es.close();
+        es = null;
+      }
+      // Fall back to polling immediately, and try to reconnect SSE with backoff.
+      startPolling();
+      setTimeout(() => {
+        if (stopped) return;
+        stopPolling();
+        backoffMs = Math.min(backoffMs * 2, maxBackoffMs);
+        startSSE();
+      }, backoffMs);
+    };
+
+    es.onopen = () => {
+      backoffMs = 1000;
+      stopPolling();
+    };
+  }
+
+  startSSE();
+
+  return function unsubscribe() {
+    stopped = true;
+    stopPolling();
+    if (es) {
+      es.close();
+      es = null;
+    }
+  };
+}
