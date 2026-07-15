@@ -134,7 +134,9 @@ def _minimal_env() -> dict[str, str]:
     return env
 
 
-def _build_command(backend: str, script_path: Path, work_dir: Path) -> list[str]:
+def _build_command(
+    backend: str, script_path: Path, work_dir: Path, *, interactive: bool = False
+) -> list[str]:
     py = sys.executable or "python3"
     if backend == BACKEND_BWRAP:
         return [
@@ -159,6 +161,7 @@ def _build_command(backend: str, script_path: Path, work_dir: Path) -> list[str]
     if backend == BACKEND_DOCKER:
         return [
             "docker", "run", "--rm",
+            *(["-i"] if interactive else []),
             "--network", "none",
             "--memory", "256m",
             "--pids-limit", "128",
@@ -181,13 +184,16 @@ def run_python(
     work_dir: str | Path,
     timeout_seconds: int = 10,
     backend: str = "auto",
+    stdin: str | None = None,
 ) -> SandboxResult:
     """Run a Python ``code`` snippet through the isolation ladder.
 
     ``work_dir`` is the cwd (``data/sandbox``); it is created if needed. The
     snippet is written to a temp file inside it and executed by the selected
-    backend. Any timeout or crash is captured, never raised — a failed
-    experiment is data, not a loop-killing error.
+    backend. ``stdin`` (if given) is fed to the process' standard input — this
+    is how :mod:`soul.agent.skill_runner` passes a skill its params as JSON. Any
+    timeout or crash is captured, never raised — a failed experiment (or skill)
+    is data, not a loop-killing error.
     """
     work = Path(work_dir)
     work.mkdir(parents=True, exist_ok=True)
@@ -196,7 +202,7 @@ def run_python(
     script = work / "_experiment.py"
     script.write_text(code, encoding="utf-8")
 
-    cmd = _build_command(chosen, script, work)
+    cmd = _build_command(chosen, script, work, interactive=stdin is not None)
     try:
         proc = subprocess.run(
             cmd,
@@ -205,6 +211,7 @@ def run_python(
             text=True,
             timeout=timeout_seconds,
             env=_minimal_env(),
+            input=stdin,
         )
         return SandboxResult(
             backend=chosen,
