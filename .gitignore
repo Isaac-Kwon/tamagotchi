@@ -4,8 +4,9 @@ config.json
 # Agent data directory (has its own git repo)
 data/
 
-# Python virtual environment
+# Python virtual environments (Windows / WSL)
 .venv/
+.venv-wsl/
 
 # Python caches
 __pycache__/
