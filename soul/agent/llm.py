@@ -219,3 +219,72 @@ class LLMClient:
 
 class LLMError(Exception):
     """Raised when the LLM request ultimately fails after retries."""
+
+
+# --------------------------------------------------------------------------- #
+# Tool-use loop (spec P3.5)
+# --------------------------------------------------------------------------- #
+@dataclass
+class ToolLoopResult:
+    """Outcome of the ACT tool-use loop."""
+
+    response: LLMResponse           # the final (non-tool) response to parse
+    messages: list[dict[str, Any]]  # full conversation incl. every tool round
+    rounds: int                     # number of tool rounds actually taken
+    forced_final: bool              # True if max rounds forced a tool-less recall
+
+
+def _assistant_tool_message(resp: LLMResponse) -> dict[str, Any]:
+    """Build the assistant message that carries the model's tool_calls."""
+    return {
+        "role": "assistant",
+        "content": resp.content or None,
+        "tool_calls": resp.tool_calls,
+    }
+
+
+def run_tool_loop(
+    llm: Any,
+    messages: list[dict[str, Any]],
+    *,
+    tools: list[dict[str, Any]],
+    dispatch: Callable[[str, Any], str],
+    recorder: TranscriptRecorder | None = None,
+    max_rounds: int = 5,
+) -> ToolLoopResult:
+    """Run a small function-calling loop (spec P3.5).
+
+    Each round the model may emit ``tool_calls``; every call is dispatched via
+    ``dispatch(name, arguments) -> str`` and its result appended as a ``tool``
+    message before re-calling. When the model returns content with no tool calls
+    the loop ends. After ``max_rounds`` rounds still requesting tools, a final
+    tool-less call forces the model to produce its answer. Every round-trip is
+    captured by ``recorder`` (chain-of-thought, spec P2.5).
+
+    ``dispatch`` must never raise — a tool failure should come back as content.
+    """
+    convo: list[dict[str, Any]] = list(messages)
+
+    for round_i in range(max_rounds):
+        # Tool rounds do NOT force json_object, or the model could not choose to
+        # call a tool instead of answering.
+        resp = llm.chat(convo, tools=tools, recorder=recorder)
+        if not resp.tool_calls:
+            return ToolLoopResult(resp, convo, round_i, forced_final=False)
+
+        convo.append(_assistant_tool_message(resp))
+        for call in resp.tool_calls:
+            fn = call.get("function") or {}
+            content = dispatch(fn.get("name"), fn.get("arguments"))
+            convo.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": call.get("id"),
+                    "name": fn.get("name"),
+                    "content": content,
+                }
+            )
+
+    # Rounds exhausted: force a final answer with no tools available.
+    final = llm.chat(convo, json_object=True, recorder=recorder)
+    return ToolLoopResult(final, convo, max_rounds, forced_final=True)

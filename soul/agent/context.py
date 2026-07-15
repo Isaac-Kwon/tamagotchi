@@ -12,7 +12,9 @@ restructuring.
 
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from ..paths import DataPaths
@@ -35,8 +37,9 @@ class RecallContext:
     soul_text: str
     recent_steps: list[dict[str, Any]] = field(default_factory=list)
     thread: ThreadInfo = field(default_factory=ThreadInfo)
-    serendipity_note: str | None = None  # M2 extension point
-    inbox_messages: list[dict[str, Any]] = field(default_factory=list)  # M2 extension point
+    serendipity_note: str | None = None  # text of a resurfaced past note (P2)
+    serendipity_note_path: str | None = None  # its data-relative path (journal)
+    inbox_messages: list[dict[str, Any]] = field(default_factory=list)  # delivered
 
     def to_block(self) -> str:
         """Render the recall context as a plain-text block for the ACT prompt."""
@@ -109,9 +112,59 @@ def _derive_thread(recent_steps: list[dict[str, Any]]) -> ThreadInfo:
     return ThreadInfo()
 
 
-def assemble_context(paths: DataPaths, *, recent_steps_n: int) -> RecallContext:
-    """Build the recall context for the upcoming step."""
+def _pick_serendipity_note(
+    paths: DataPaths, rng: random.Random
+) -> tuple[str | None, str | None]:
+    """Uniformly draw one past note to resurface (spec P2 environmental chance).
+
+    The draw is *topic-neutral*: a note is chosen at random by file, never by
+    content, so it supplies path-dependent chance without seeding any theme
+    (blank-slate philosophy). Returns ``(text, data_relative_path)`` or
+    ``(None, None)`` when there are no notes yet.
+    """
+    if not paths.notes_dir.exists():
+        return None, None
+    notes = sorted(p for p in paths.notes_dir.glob("*.md") if p.is_file())
+    if not notes:
+        return None, None
+    chosen: Path = rng.choice(notes)
+    try:
+        text = chosen.read_text(encoding="utf-8")
+    except OSError:
+        return None, None
+    return text, f"notes/{chosen.name}"
+
+
+def assemble_context(
+    paths: DataPaths,
+    *,
+    recent_steps_n: int,
+    serendipity_rate: float = 0.0,
+    rng: random.Random | None = None,
+    inbox_messages: list[dict[str, Any]] | None = None,
+) -> RecallContext:
+    """Build the recall context for the upcoming step.
+
+    ``serendipity_rate`` (spec ``agent.serendipity_rate``, default 0.3 in config)
+    is the probability of resurfacing one uniformly-random past note as "a note
+    you wrote before". ``inbox_messages`` are observer messages already drained
+    from the inbox for this step (spec P4); they are shown under neutral framing.
+    """
     soul_text = soul.read_soul(paths)
     recent = journal.tail(paths, recent_steps_n)
     thread = _derive_thread(recent)
-    return RecallContext(soul_text=soul_text, recent_steps=recent, thread=thread)
+
+    ctx = RecallContext(
+        soul_text=soul_text,
+        recent_steps=recent,
+        thread=thread,
+        inbox_messages=list(inbox_messages or []),
+    )
+
+    r = rng or random
+    if serendipity_rate > 0 and r.random() < serendipity_rate:
+        text, rel = _pick_serendipity_note(paths, r)
+        ctx.serendipity_note = text
+        ctx.serendipity_note_path = rel
+
+    return ctx
