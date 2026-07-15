@@ -9,6 +9,7 @@ consumers can rely on a stable shape.
 from __future__ import annotations
 
 import json
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -95,3 +96,108 @@ def tail(paths: DataPaths, n: int) -> list[dict[str, Any]]:
         return []
     records = read_all(paths)
     return records[-n:]
+
+
+# --------------------------------------------------------------------------- #
+# Revealed interest — pure derivation from journal steps (spec P2)
+# --------------------------------------------------------------------------- #
+def revealed_interest(steps: list[dict[str, Any]]) -> dict[str, Any]:
+    """Derive *revealed* interest signals from journal steps (pure function).
+
+    Self-reported ``interest`` is a *stated* signal prone to positive bias and
+    confabulation. The true signal is behavioural and accumulates in the record
+    (spec P2). This computes it without any LLM involvement:
+
+        * thread duration        — how many steps each thread ran,
+        * shelve-then-return     — how often a shelved topic was actually returned to,
+        * topic recurrence       — how often the same topic reappears.
+
+    Not stored anywhere; computed on read. ``steps`` is a chronological list of
+    step records (as produced by :func:`read_all` / :func:`tail`).
+    """
+    threads: dict[str, dict[str, Any]] = {}
+    topic_counts: Counter[str] = Counter()
+    shelved_open: dict[str, int] = {}  # topic -> outstanding shelve count
+    returns: Counter[str] = Counter()  # topic -> times returned to after a shelve
+    interests: list[int] = []
+
+    for step in steps:
+        if step.get("kind") != "wake_step":
+            continue
+        thread_id = step.get("thread_id")
+        topic = step.get("topic")
+        decision = step.get("decision")
+        interest = step.get("interest")
+
+        if topic:
+            topic_counts[topic] += 1
+            # A return: this topic was previously shelved and is now revisited.
+            if shelved_open.get(topic, 0) > 0:
+                returns[topic] += 1
+                shelved_open[topic] = 0
+
+        if thread_id:
+            t = threads.setdefault(
+                thread_id,
+                {"thread_id": thread_id, "topic": topic, "steps": 0, "interests": []},
+            )
+            t["steps"] += 1
+            if topic:
+                t["topic"] = topic
+            if isinstance(interest, int):
+                t["interests"].append(interest)
+
+        if isinstance(interest, int):
+            interests.append(interest)
+
+        if decision == "shelve" and topic:
+            shelved_open[topic] = shelved_open.get(topic, 0) + 1
+
+    thread_list: list[dict[str, Any]] = []
+    for t in threads.values():
+        ints = t.pop("interests")
+        t["avg_interest"] = round(sum(ints) / len(ints), 2) if ints else None
+        t["max_interest"] = max(ints) if ints else None
+        thread_list.append(t)
+    thread_list.sort(key=lambda t: (t["steps"], t["max_interest"] or 0), reverse=True)
+
+    recurrence = {topic: c for topic, c in topic_counts.items() if c > 1}
+    stated_avg = round(sum(interests) / len(interests), 2) if interests else None
+
+    note = _stated_vs_revealed_note(stated_avg, thread_list, dict(returns), recurrence)
+
+    return {
+        "threads": thread_list,
+        "top_threads": thread_list[:3],
+        "topic_recurrence": recurrence,
+        "shelve_returns": dict(returns),
+        "total_shelve_returns": int(sum(returns.values())),
+        "stated_avg_interest": stated_avg,
+        "stated_vs_revealed_note": note,
+    }
+
+
+def _stated_vs_revealed_note(
+    stated_avg: float | None,
+    thread_list: list[dict[str, Any]],
+    returns: dict[str, int],
+    recurrence: dict[str, int],
+) -> str | None:
+    """A short, neutral note juxtaposing stated interest with revealed behaviour."""
+    if not thread_list:
+        return None
+    parts: list[str] = []
+    if stated_avg is not None:
+        parts.append(f"Stated interest averages {stated_avg}.")
+    longest = thread_list[0]
+    parts.append(
+        f"Longest thread ran {longest['steps']} step(s) on "
+        f"\"{longest.get('topic') or '?'}\"."
+    )
+    if returns:
+        returned = ", ".join(f'"{t}" ({n}x)' for t, n in returns.items())
+        parts.append(f"Returned to after shelving: {returned}.")
+    if recurrence:
+        top = max(recurrence.items(), key=lambda kv: kv[1])
+        parts.append(f'Most recurrent topic: "{top[0]}" ({top[1]} steps).')
+    return " ".join(parts)
