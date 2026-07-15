@@ -22,6 +22,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
+from ..agent import skills as skills_mod
 from ..paths import DataPaths
 from . import wiki
 
@@ -105,13 +106,37 @@ WEB_TOOLS: list[dict[str, Any]] = [
     ),
 ]
 
+SKILL_TOOLS: list[dict[str, Any]] = [
+    _fn(
+        "skill_write",
+        "define a new activity you can do later",
+        {
+            "name": {"type": "string",
+                     "description": "a short identifier (letters, digits, - or _)"},
+            "description": {"type": "string",
+                            "description": "one line describing what it does"},
+            "code": {"type": "string",
+                     "description": "python defining `def run(params: dict) -> dict` "
+                                    "returning {\"output\": \"<markdown>\"}; "
+                                    "standard library only"},
+        },
+        ["name", "description", "code"],
+    ),
+]
+
 WIKI_TOOL_NAMES = frozenset(t["function"]["name"] for t in WIKI_TOOLS)
 WEB_TOOL_NAMES = frozenset(t["function"]["name"] for t in WEB_TOOLS)
+SKILL_TOOL_NAMES = frozenset(t["function"]["name"] for t in SKILL_TOOLS)
 
 
-def act_tools(*, include_web: bool = True) -> list[dict[str, Any]]:
-    """Tools offered during ACT (wiki always; web too unless disabled)."""
-    return WIKI_TOOLS + WEB_TOOLS if include_web else list(WIKI_TOOLS)
+def act_tools(*, include_web: bool = True, include_skills: bool = True) -> list[dict[str, Any]]:
+    """Tools offered during ACT (wiki always; web + skill_write unless disabled)."""
+    tools = list(WIKI_TOOLS)
+    if include_web:
+        tools += WEB_TOOLS
+    if include_skills:
+        tools += SKILL_TOOLS
+    return tools
 
 
 # --------------------------------------------------------------------------- #
@@ -122,6 +147,7 @@ class DispatchResult:
     content: str  # fed back to the model as the tool message content
     wiki_ops: list[dict[str, Any]] = field(default_factory=list)
     web_visits: list[str] = field(default_factory=list)
+    skill_ops: list[dict[str, Any]] = field(default_factory=list)
 
 
 def _parse_args(arguments: Any) -> dict[str, Any]:
@@ -175,6 +201,9 @@ def dispatch(
             links = wiki.backlinks(paths, slug)
             return DispatchResult(content=json.dumps({"backlinks": links}, ensure_ascii=False))
 
+        if name == "skill_write":
+            return _dispatch_skill_write(paths, args)
+
         if name in WEB_TOOL_NAMES:
             return _dispatch_web(name, args, web_config)
 
@@ -182,6 +211,32 @@ def dispatch(
         return DispatchResult(content=json.dumps({"error": str(exc)}, ensure_ascii=False))
 
     return DispatchResult(content=json.dumps({"error": f"unknown tool: {name}"}))
+
+
+def _dispatch_skill_write(paths: DataPaths, args: dict[str, Any]) -> DispatchResult:
+    """Register a self-authored skill (spec P8).
+
+    Validates the name (slug), code (defines ``run``, stdlib-only imports), then
+    writes ``manifest.json`` + ``skill.py`` and commits them to the data repo. A
+    validation failure returns an error string so the model can correct itself —
+    it never raises. On success the skill appears as ``skill:<name>`` in the next
+    step's action list.
+    """
+    name = str(args.get("name", ""))
+    try:
+        manifest = skills_mod.create_skill(
+            paths, name, str(args.get("description", "")), str(args.get("code", "")),
+        )
+    except skills_mod.SkillError as exc:
+        return DispatchResult(content=json.dumps({"error": str(exc)}, ensure_ascii=False))
+    return DispatchResult(
+        content=json.dumps(
+            {"registered": manifest["name"],
+             "note": "available next step as skill:" + manifest["name"]},
+            ensure_ascii=False,
+        ),
+        skill_ops=[{"tool": "skill_write", "name": manifest["name"]}],
+    )
 
 
 def _dispatch_web(name: str, args: dict[str, Any], web_config: Any | None) -> DispatchResult:
