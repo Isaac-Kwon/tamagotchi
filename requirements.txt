@@ -5,6 +5,9 @@ httpx
 fastapi
 uvicorn
 mcp
+# IANA timezone database — zoneinfo has no bundled DB on Windows (spec P5:
+# report scheduling uses Asia/Seoul via zoneinfo).
+tzdata
 
 # Dev dependency (not required at runtime): pytest
 # Install with:  pip install pytest   (or see requirements-dev.txt)
