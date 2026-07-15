@@ -68,13 +68,16 @@ def test_api_key_env_fallback(monkeypatch):
     assert cfg.resolved_api_key == "sk-from-env"
 
 
-def test_api_key_missing_raises(monkeypatch):
+def test_api_key_missing_is_fine_for_local_llm(monkeypatch):
+    # Local OpenAI-compatible endpoints (Ollama etc.) need no key: the client
+    # omits the Authorization header when resolution yields None.
     cfg = Config()
     cfg.llm.api_key = None
     cfg.llm.api_key_env = "DEFINITELY_UNSET_VAR"
     monkeypatch.delenv("DEFINITELY_UNSET_VAR", raising=False)
-    with pytest.raises(ConfigError):
-        resolve_api_key(cfg)
+    resolve_api_key(cfg)
+    assert cfg.resolved_api_key is None
+    assert cfg.llm.mock is False
 
 
 def test_mock_override_needs_no_key(monkeypatch):

@@ -409,7 +409,8 @@ Claude Code 등 외부 AI의 구조적 진단용. 공식 `mcp` Python SDK.
 }
 ```
 
-api_key 해석: `api_key` 직접 기입 → `api_key_env` 환경변수 → 없으면 기동 시 명확한 에러.
+api_key 해석: `api_key` 직접 기입 → `api_key_env` 환경변수 → 없으면 키 없이 동작
+(Authorization 헤더 생략 — 로컬 Ollama 등 키 불필요 엔드포인트 대응, 스펙 개정 2026-07-16).
 
 ## P7. 대화 선점 (preemption)
 

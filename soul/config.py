@@ -1,14 +1,15 @@
 """Configuration loading and validation for the Soul Tamagotchi agent.
 
 The configuration format is JSON (spec P6). This module loads ``config.json``
-into a set of validated dataclasses. API-key resolution order (spec P6):
+into a set of validated dataclasses. API-key resolution order:
 
     1. ``llm.api_key`` written directly in the config
     2. the environment variable named by ``llm.api_key_env``
-    3. otherwise a clear startup error
+    3. otherwise no key — requests are sent without an Authorization header,
+       which is what local OpenAI-compatible endpoints (e.g. Ollama) expect
 
-When ``llm.mock`` is true (or ``--mock`` is passed on the command line), no API
-key is required because the runtime substitutes a FakeLLM.
+When ``llm.mock`` is true (or ``--mock`` is passed on the command line), the
+runtime substitutes a FakeLLM and no endpoint is contacted at all.
 """
 
 from __future__ import annotations
@@ -196,10 +197,14 @@ def _validate(cfg: Config) -> None:
 
 
 def resolve_api_key(cfg: Config, *, mock_override: bool = False) -> None:
-    """Resolve the LLM API key in place, following spec P6 precedence.
+    """Resolve the LLM API key in place (config value, then env var).
 
     ``mock_override`` reflects a ``--mock`` command-line flag; combined with
-    ``llm.mock`` it disables the key requirement entirely.
+    ``llm.mock`` it skips resolution entirely.
+
+    A missing key is NOT an error: local OpenAI-compatible endpoints (Ollama
+    etc.) take requests without an Authorization header, so the client simply
+    omits it when ``resolved_api_key`` stays ``None``.
     """
     if cfg.llm.mock or mock_override:
         cfg.llm.mock = True
@@ -215,13 +220,7 @@ def resolve_api_key(cfg: Config, *, mock_override: bool = False) -> None:
         cfg.resolved_api_key = os.environ[env_name]
         return
 
-    raise ConfigError(
-        "No LLM API key found. Provide one of:\n"
-        f"  - set 'llm.api_key' in config.json, or\n"
-        f"  - export the environment variable '{env_name}', or\n"
-        "  - enable mock mode ('llm.mock': true, or pass --mock).\n"
-        "See config.example.json for the full schema."
-    )
+    cfg.resolved_api_key = None
 
 
 def load_config(

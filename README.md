@@ -50,8 +50,10 @@ cp config.example.json config.json
   바꿀 수 있습니다 (특정 벤더에 락인하지 않음).
 - `llm.model` — 사용할 모델 이름.
 - `llm.api_key` 또는 `llm.api_key_env` — 키 해석 순서는 **① `llm.api_key`에 직접
-  기입 → ② `llm.api_key_env`로 지정한 환경변수 → ③ 없으면 기동 시 명확한 에러**
-  (`soul/config.py:resolve_api_key`). 기본 `api_key_env`는 `OPENAI_API_KEY`.
+  기입 → ② `llm.api_key_env`로 지정한 환경변수 → ③ 없으면 키 없이 동작**
+  (`soul/config.py:resolve_api_key`). 키가 없으면 Authorization 헤더 없이 요청하며,
+  로컬 Ollama 같은 키 불필요 엔드포인트에 그대로 붙습니다. 기본 `api_key_env`는
+  `OPENAI_API_KEY`.
 - `llm.mock` — `true`면 실제 API 키 없이 `FakeLLM`으로 전체 파이프라인을 구동합니다
   (UI 개발·테스트용, API 비용 0).
 
