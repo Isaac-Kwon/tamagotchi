@@ -54,6 +54,7 @@
   "web": {
     "host": "127.0.0.1",
     "port": 8000,
-    "sse_check_ms": 1000
+    "sse_check_ms": 1000,
+    "allowed_networks": []
   }
 }

@@ -14,6 +14,7 @@ runtime substitutes a FakeLLM and no endpoint is contacted at all.
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 from dataclasses import dataclass, field, fields, is_dataclass
@@ -101,6 +102,15 @@ class WebConfig:
     host: str = "127.0.0.1"
     port: int = 8000
     sse_check_ms: int = 1000
+    # CIDR allowlist for the web server ("192.168.0.0/24", "10.0.0.5/32", ...).
+    # Empty list = no filtering (the default 127.0.0.1 bind already limits
+    # access to the local machine). When non-empty, requests from addresses
+    # outside every listed network are rejected with 403.
+    allowed_networks: list[str] = field(default_factory=list)
+
+    def parsed_networks(self) -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
+        """``allowed_networks`` parsed into network objects (may raise ValueError)."""
+        return [ipaddress.ip_network(n, strict=False) for n in self.allowed_networks]
 
 
 @dataclass
@@ -194,6 +204,12 @@ def _validate(cfg: Config) -> None:
         raise ConfigError("llm.max_retries must be >= 1.")
     if cfg.llm.timeout_seconds <= 0:
         raise ConfigError("llm.timeout_seconds must be > 0.")
+    try:
+        cfg.web.parsed_networks()
+    except ValueError as exc:
+        raise ConfigError(
+            f"web.allowed_networks has an invalid CIDR entry: {exc}"
+        ) from exc
 
 
 def resolve_api_key(cfg: Config, *, mock_override: bool = False) -> None:

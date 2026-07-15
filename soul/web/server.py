@@ -8,10 +8,12 @@ never writes other static files.
 
 from __future__ import annotations
 
+import ipaddress
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI
+from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from ..config import Config
@@ -38,6 +40,48 @@ def _ensure_placeholder_index() -> None:
     has_files = any(p.is_file() for p in STATIC_DIR.iterdir())
     if not has_files:
         (STATIC_DIR / "index.html").write_text(_PLACEHOLDER_INDEX, encoding="utf-8")
+
+
+class IPAllowlistMiddleware:
+    """Reject connections whose client IP is outside ``web.allowed_networks``.
+
+    Pure ASGI (not ``BaseHTTPMiddleware``) so SSE responses stream through
+    unbuffered. Fail-closed: when an allowlist is configured, a missing or
+    unparseable client address is rejected too. An empty allowlist never
+    reaches this middleware — ``create_app`` only installs it when non-empty.
+    """
+
+    def __init__(
+        self,
+        app: Any,
+        networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network],
+    ) -> None:
+        self.app = app
+        self.networks = networks
+
+    def _allowed(self, scope: dict[str, Any]) -> bool:
+        client = scope.get("client")
+        if not client:
+            return False
+        try:
+            addr = ipaddress.ip_address(client[0])
+        except ValueError:
+            return False
+        return any(addr in net for net in self.networks)
+
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if scope["type"] not in ("http", "websocket") or self._allowed(scope):
+            await self.app(scope, receive, send)
+            return
+        if scope["type"] == "websocket":
+            await receive()  # consume websocket.connect
+            await send({"type": "websocket.close", "code": 1008})
+            return
+        response = PlainTextResponse(
+            "forbidden: client address not in web.allowed_networks",
+            status_code=403,
+        )
+        await response(scope, receive, send)
 
 
 def _make_llm(cfg: Config) -> Any:
@@ -77,6 +121,10 @@ def create_app(
 
     # API routes first so they win over the catch-all static mount.
     app.include_router(build_router(cfg, paths, chat_manager))
+
+    networks = cfg.web.parsed_networks()
+    if networks:
+        app.add_middleware(IPAllowlistMiddleware, networks=networks)
 
     _ensure_placeholder_index()
     app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")

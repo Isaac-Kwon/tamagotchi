@@ -51,6 +51,20 @@ def test_invalid_mode_rejected():
         config_from_dict(raw)
 
 
+def test_invalid_allowed_network_rejected():
+    raw = _example_dict()
+    raw["web"]["allowed_networks"] = ["192.168.0.0/24", "not-a-cidr"]
+    with pytest.raises(ConfigError):
+        config_from_dict(raw)
+
+
+def test_allowed_networks_parse_v4_and_v6():
+    raw = _example_dict()
+    raw["web"]["allowed_networks"] = ["192.168.0.0/24", "::1/128", "10.0.0.5"]
+    cfg = config_from_dict(raw)
+    assert len(cfg.web.parsed_networks()) == 3
+
+
 def test_api_key_direct_wins(monkeypatch):
     cfg = Config()
     cfg.llm.api_key = "sk-direct"

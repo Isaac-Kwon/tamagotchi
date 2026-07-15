@@ -353,3 +353,42 @@ def test_record_toggle_recorded_true_persists_across_next_wake(client):
     # Next wake drains the inbox and delivers it.
     rec = _seed_step(client._config, client._paths)
     assert rec["inbox_delivered"], "expected the recorded chat to reach the wake"
+
+
+# --------------------------------------------------------------------------- #
+# IP allowlist (web.allowed_networks)
+# --------------------------------------------------------------------------- #
+def _allowlist_client(seeded, networks, client_addr):
+    config, data_paths = seeded
+    config.web.allowed_networks = networks
+    app = create_app(config, data_paths, llm=FakeLLM())
+    return TestClient(app, client=client_addr)
+
+
+def test_allowlist_permits_listed_network(seeded):
+    c = _allowlist_client(seeded, ["192.168.0.0/24"], ("192.168.0.42", 1234))
+    assert c.get("/api/state").status_code == 200
+
+
+def test_allowlist_rejects_outside_network(seeded):
+    c = _allowlist_client(seeded, ["192.168.0.0/24"], ("10.0.0.7", 1234))
+    r = c.get("/api/state")
+    assert r.status_code == 403
+    assert "allowed_networks" in r.text
+
+
+def test_allowlist_covers_static_ui(seeded):
+    c = _allowlist_client(seeded, ["192.168.0.0/24"], ("10.0.0.7", 1234))
+    assert c.get("/").status_code == 403
+
+
+def test_allowlist_fail_closed_on_unparseable_client(seeded):
+    # Starlette's TestClient default host is the non-IP string "testclient";
+    # with an allowlist configured that must be rejected, not waved through.
+    c = _allowlist_client(seeded, ["192.168.0.0/24"], ("testclient", 50000))
+    assert c.get("/api/state").status_code == 403
+
+
+def test_empty_allowlist_disables_filtering(seeded):
+    c = _allowlist_client(seeded, [], ("10.9.8.7", 1234))
+    assert c.get("/api/state").status_code == 200
