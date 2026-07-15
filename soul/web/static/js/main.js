@@ -72,10 +72,14 @@ function boot() {
   };
 
   const game = new Phaser.Game(config);
-  const scene = game.scene.keys.room;
 
   const panelsRoot = document.getElementById("panels-root");
   let chattingOverride = false;
+  // Reading game.scene.keys.room synchronously right after `new
+  // Phaser.Game()` is unreliable (the scene manager boots asynchronously on
+  // the next game step). room_scene.js instead emits "room-ready" with
+  // itself once its create() has fully run; we hold the reference here.
+  let scene = null;
 
   const panels = initPanels({
     root: panelsRoot,
@@ -84,13 +88,14 @@ function boot() {
       chattingOverride = isChatting;
       // Immediate local feedback: move the character to the door without
       // waiting for the next SSE/poll tick.
-      if (isChatting) {
+      if (isChatting && scene) {
         scene.applyState({ status: "chatting", stale: false, last_step: null, updated_at: new Date().toISOString() });
       }
     },
   });
 
-  function onReady() {
+  function onReady(roomScene) {
+    scene = roomScene;
     scene.events.on("bubbleClick", (stepId) => {
       if (stepId) panels.openStep(stepId);
     });
@@ -121,9 +126,7 @@ function boot() {
     }
   }
 
-  // Scene.create() runs asynchronously on the next game step, so this
-  // listener reliably fires exactly once after the room is fully built.
-  scene.events.once(Phaser.Scenes.Events.CREATE, onReady);
+  game.events.once("room-ready", onReady);
 }
 
 if (document.readyState === "loading") {

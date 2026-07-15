@@ -88,6 +88,12 @@ export class RoomScene extends Phaser.Scene {
       .setOrigin(0.5, 0)
       .setDepth(501)
       .setVisible(false);
+
+    // Tell main.js the scene instance exists and is fully built. Reading
+    // game.scene.keys.room synchronously right after `new Phaser.Game()`
+    // is not reliable (the scene manager boots asynchronously), so main.js
+    // waits for this event instead of grabbing the scene reference early.
+    this.game.events.emit("room-ready", this);
   }
 
   // -------------------------------------------------------------------
@@ -473,8 +479,12 @@ export class RoomScene extends Phaser.Scene {
     // mouth
     g.lineStyle(2, 0x2b2b2b, 1);
     if (style.mouth === "frown") {
+      // Short top arc (200deg -> 340deg through 270deg/"up"), clockwise
+      // (default direction): dips up in the middle, corners down = frown.
+      // NOTE: anticlockwise=true here would trace the *long* way around
+      // (~220 degrees) instead of the intended ~140 degree top arc.
       g.beginPath();
-      g.arc(17, -25, 5, Phaser.Math.DegToRad(200), Phaser.Math.DegToRad(340), true);
+      g.arc(17, -25, 5, Phaser.Math.DegToRad(200), Phaser.Math.DegToRad(340));
       g.strokePath();
     } else if (style.mouth === "flat") {
       g.lineBetween(12, -24, 22, -24);
