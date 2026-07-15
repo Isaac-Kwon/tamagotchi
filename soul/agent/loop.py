@@ -35,6 +35,7 @@ from . import actions as actions_mod
 from . import context as context_mod
 from . import prompts, sandbox, soul
 from .llm import LLMError, TranscriptRecorder, run_tool_loop
+from .preempt import StepController, StepTimeout
 
 # Matches the outermost {...} spanning newlines (greedy) for stage-2 extraction.
 _OUTER_BRACES = re.compile(r"\{.*\}", re.DOTALL)
@@ -154,11 +155,22 @@ def _run_code_experiment(
     return content + note, result.backend
 
 
-def run_step(cfg: Config, paths: DataPaths, llm: Any) -> dict[str, Any]:
+def run_step(
+    cfg: Config,
+    paths: DataPaths,
+    llm: Any,
+    *,
+    controller: StepController | None = None,
+) -> dict[str, Any]:
     """Run one wake step. Returns the journal record that was appended.
 
     ``llm`` is any object exposing ``chat(messages, tools=None, json_object=...,
     recorder=...)`` — the real client or a FakeLLM.
+
+    ``controller`` (a :class:`~soul.agent.preempt.StepController`) enforces the
+    step deadline and chat preemption at every LLM-call boundary (spec P5/P7).
+    When omitted the step runs with no deadline and no preemption (M1 behaviour,
+    used by ``--once`` and most tests).
     """
     # 0. Keep the derived wiki index in sync with the md source (spec P3.5).
     try:
@@ -169,6 +181,44 @@ def run_step(cfg: Config, paths: DataPaths, llm: Any) -> dict[str, Any]:
     # 1. Recall context + step id (persist the incremented counter with the step).
     step_id, st = state_store.next_step_id(paths.state_json)
     recorder = TranscriptRecorder(paths.transcript_file(step_id))
+
+    # Progress captured so a step-timeout can preserve partial artifacts (P5).
+    progress: dict[str, Any] = {"action": None, "topic": None, "content_path": None}
+
+    def _boundary(phase: str, messages: list[dict[str, Any]] | None = None,
+                  *, tool_rounds_done: int = 0, act_result: Any = None) -> None:
+        if controller is not None:
+            controller.boundary(
+                phase, messages, tool_rounds_done=tool_rounds_done, act_result=act_result
+            )
+
+    if controller is not None:
+        controller.step_id = step_id
+
+    try:
+        return _run_step_body(
+            cfg, paths, llm, st, step_id, recorder, controller, progress, _boundary
+        )
+    except StepTimeout:
+        return _record_error(
+            paths, step_id, st, recorder, phase="timeout", error="step_timeout",
+            action=progress["action"], topic=progress["topic"],
+            content_path=progress["content_path"],
+            preempted=bool(controller and controller.preempted),
+        )
+
+
+def _run_step_body(
+    cfg: Config,
+    paths: DataPaths,
+    llm: Any,
+    st: dict[str, Any],
+    step_id: str,
+    recorder: TranscriptRecorder,
+    controller: StepController | None,
+    progress: dict[str, Any],
+    _boundary: Any,
+) -> dict[str, Any]:
 
     # Drain the observer inbox atomically at step start (spec P4/P5).
     delivered = inbox.drain(paths)
@@ -198,6 +248,9 @@ def run_step(cfg: Config, paths: DataPaths, llm: Any) -> dict[str, Any]:
 
     act_tools = knowledge_tools.act_tools(include_web=cfg.web_actions.enabled)
 
+    # Boundary before ACT: enforce the deadline / yield to a live chat (P5/P7).
+    _boundary("act", act_messages)
+
     try:
         loop_res = run_tool_loop(
             llm,
@@ -206,10 +259,12 @@ def run_step(cfg: Config, paths: DataPaths, llm: Any) -> dict[str, Any]:
             dispatch=_dispatch,
             recorder=recorder,
             max_rounds=cfg.knowledge.max_tool_rounds,
+            on_round=lambda convo, i: _boundary("tools", convo, tool_rounds_done=i),
         )
         act_json, act_resp = _finalize_json(llm, loop_res.messages, loop_res.response, recorder)
     except LLMError as exc:
-        return _record_error(paths, step_id, st, recorder, phase="act", error=str(exc))
+        return _record_error(paths, step_id, st, recorder, phase="act", error=str(exc),
+                             llm_failure=True)
 
     if act_json is None:
         return _record_error(
@@ -222,6 +277,8 @@ def run_step(cfg: Config, paths: DataPaths, llm: Any) -> dict[str, Any]:
         action = "free_write"
     topic = str(act_json.get("topic") or "").strip() or "(untitled)"
     content = str(act_json.get("content") or "")
+    progress["action"] = action
+    progress["topic"] = topic
 
     # 2b. code_experiment: run the snippet through the sandbox ladder (spec P3).
     sandbox_backend = None
@@ -234,6 +291,7 @@ def run_step(cfg: Config, paths: DataPaths, llm: Any) -> dict[str, Any]:
     note_path.parent.mkdir(parents=True, exist_ok=True)
     note_path.write_text(content, encoding="utf-8")
     content_rel = f"notes/{note_name}"
+    progress["content_path"] = content_rel
 
     # 4. REFLECT call (no tools).
     reflect_messages = prompts.build_reflect_messages(
@@ -242,12 +300,15 @@ def run_step(cfg: Config, paths: DataPaths, llm: Any) -> dict[str, Any]:
         act_content=content,
         previous_interest=ctx.thread.previous_interest,
     )
+    # Boundary before REFLECT: enforce the deadline / yield to a live chat.
+    _boundary("reflect", reflect_messages,
+              act_result={"action": action, "topic": topic, "content_path": content_rel})
     try:
         reflect_json, reflect_resp = _parse_with_fallback(llm, reflect_messages, recorder)
     except LLMError as exc:
         return _record_error(
             paths, step_id, st, recorder, phase="reflect", error=str(exc),
-            action=action, topic=topic, content_path=content_rel,
+            action=action, topic=topic, content_path=content_rel, llm_failure=True,
         )
 
     if reflect_json is None:
@@ -318,6 +379,7 @@ def run_step(cfg: Config, paths: DataPaths, llm: Any) -> dict[str, Any]:
         sandbox_backend=sandbox_backend,
         inbox_delivered=inbox_delivered_ids,
         llm=llm_meta,
+        preempted=bool(controller and controller.preempted),
     )
     if mood_raw is not None:
         record["mood_raw"] = mood_raw  # preserve out-of-enum original (spec P2)
@@ -391,8 +453,15 @@ def _record_error(
     action: str | None = None,
     topic: str | None = None,
     content_path: str | None = None,
+    llm_failure: bool = False,
+    preempted: bool = False,
 ) -> dict[str, Any]:
-    """Record a kind:"error" step and skip (spec P2 JSON robustness end state)."""
+    """Record a kind:"error" step and skip (spec P2 JSON robustness end state).
+
+    ``llm_failure`` distinguishes an LLM outage/timeout (which the scheduler's
+    circuit breaker counts, spec P5) from a parse failure or a step timeout
+    (which it does NOT). It is surfaced on the error payload for the scheduler.
+    """
     record = journal.new_step_record(
         step_id,
         kind="error",
@@ -400,7 +469,8 @@ def _record_error(
         topic=topic,
         content_path=content_path,
         transcript_path=f"transcripts/{step_id}.jsonl",
-        error={"phase": phase, "message": error},
+        preempted=preempted,
+        error={"phase": phase, "message": error, "llm_failure": llm_failure},
     )
     journal.append_step(paths, record)
 

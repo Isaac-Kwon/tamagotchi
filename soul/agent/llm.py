@@ -251,6 +251,7 @@ def run_tool_loop(
     dispatch: Callable[[str, Any], str],
     recorder: TranscriptRecorder | None = None,
     max_rounds: int = 5,
+    on_round: Callable[[list[dict[str, Any]], int], None] | None = None,
 ) -> ToolLoopResult:
     """Run a small function-calling loop (spec P3.5).
 
@@ -261,11 +262,18 @@ def run_tool_loop(
     tool-less call forces the model to produce its answer. Every round-trip is
     captured by ``recorder`` (chain-of-thought, spec P2.5).
 
+    ``on_round`` (if given) is invoked with ``(convo, round_index)`` immediately
+    before each LLM call — this is the boundary the wake loop uses to enforce the
+    step deadline and yield to chat preemption (spec P5/P7). It may block (while a
+    chat runs) or raise (on a step timeout); both propagate to the caller.
+
     ``dispatch`` must never raise — a tool failure should come back as content.
     """
     convo: list[dict[str, Any]] = list(messages)
 
     for round_i in range(max_rounds):
+        if on_round is not None:
+            on_round(convo, round_i)
         # Tool rounds do NOT force json_object, or the model could not choose to
         # call a tool instead of answering.
         resp = llm.chat(convo, tools=tools, recorder=recorder)
@@ -286,5 +294,7 @@ def run_tool_loop(
             )
 
     # Rounds exhausted: force a final answer with no tools available.
+    if on_round is not None:
+        on_round(convo, max_rounds)
     final = llm.chat(convo, json_object=True, recorder=recorder)
     return ToolLoopResult(final, convo, max_rounds, forced_final=True)
