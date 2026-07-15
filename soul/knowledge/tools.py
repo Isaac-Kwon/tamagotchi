@@ -17,6 +17,7 @@ the model plus journal metadata (``wiki_ops`` / ``web_visits``).
 
 from __future__ import annotations
 
+import importlib
 import json
 from dataclasses import dataclass, field
 from typing import Any
@@ -185,7 +186,9 @@ def dispatch(
 
 def _dispatch_web(name: str, args: dict[str, Any], web_config: Any | None) -> DispatchResult:
     """Lazily import webtools so the web path is optional (spec: import inside)."""
-    from ..agent import webtools  # imported lazily; mocked in tests
+    # import_module resolves through sys.modules, so a test-injected fake
+    # module wins even when the real one was imported earlier in the run.
+    webtools = importlib.import_module("soul.agent.webtools")
 
     if name == "web_search":
         results = webtools.web_search(
