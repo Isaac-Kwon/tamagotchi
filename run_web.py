@@ -35,7 +35,14 @@ def main(argv: list[str] | None = None) -> int:
     paths = init_data_dir(cfg.agent.data_dir)
     app = create_app(cfg, paths)
 
-    uvicorn.run(app, host=cfg.web.host, port=cfg.web.port)
+    # Without a graceful-shutdown cap, Ctrl-C waits for open SSE streams
+    # (browser tabs) to disconnect before the process exits.
+    uvicorn.run(
+        app,
+        host=cfg.web.host,
+        port=cfg.web.port,
+        timeout_graceful_shutdown=3,
+    )
     return 0
 
 
