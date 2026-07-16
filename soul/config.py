@@ -92,6 +92,13 @@ class KnowledgeConfig:
 
 
 @dataclass
+class ObserverRequestsConfig:
+    enabled: bool = True
+    max_open: int = 5
+    max_attachment_mb: int = 20
+
+
+@dataclass
 class ReportConfig:
     time: str = "22:00"
     timezone: str = "Asia/Seoul"
@@ -125,6 +132,9 @@ class Config:
     knowledge: KnowledgeConfig = field(default_factory=KnowledgeConfig)
     report: ReportConfig = field(default_factory=ReportConfig)
     web: WebConfig = field(default_factory=WebConfig)
+    observer_requests: ObserverRequestsConfig = field(
+        default_factory=ObserverRequestsConfig
+    )
 
     # Populated after resolution; not part of the JSON schema.
     resolved_api_key: str | None = None
@@ -172,6 +182,7 @@ def config_from_dict(raw: dict[str, Any]) -> Config:
         "knowledge": KnowledgeConfig,
         "report": ReportConfig,
         "web": WebConfig,
+        "observer_requests": ObserverRequestsConfig,
     }
     unknown = set(raw) - set(section_types)
     if unknown:
@@ -213,6 +224,10 @@ def _validate(cfg: Config) -> None:
         raise ConfigError(
             f"web.allowed_networks has an invalid CIDR entry: {exc}"
         ) from exc
+    if cfg.observer_requests.max_open < 1:
+        raise ConfigError("observer_requests.max_open must be >= 1.")
+    if cfg.observer_requests.max_attachment_mb < 1:
+        raise ConfigError("observer_requests.max_attachment_mb must be >= 1.")
 
 
 def resolve_api_key(cfg: Config, *, mock_override: bool = False) -> None:

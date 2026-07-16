@@ -57,5 +57,10 @@
     "port": 8000,
     "sse_check_ms": 1000,
     "allowed_networks": []
+  },
+  "observer_requests": {
+    "enabled": true,
+    "max_open": 5,
+    "max_attachment_mb": 20
   }
 }

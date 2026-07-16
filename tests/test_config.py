@@ -65,6 +65,29 @@ def test_allowed_networks_parse_v4_and_v6():
     assert len(cfg.web.parsed_networks()) == 3
 
 
+def test_observer_requests_defaults_when_section_omitted():
+    raw = _example_dict()
+    raw.pop("observer_requests", None)
+    cfg = config_from_dict(raw)
+    assert cfg.observer_requests.enabled is True
+    assert cfg.observer_requests.max_open == 5
+    assert cfg.observer_requests.max_attachment_mb == 20
+
+
+def test_invalid_observer_requests_max_open_rejected():
+    raw = _example_dict()
+    raw["observer_requests"] = {"max_open": 0}
+    with pytest.raises(ConfigError):
+        config_from_dict(raw)
+
+
+def test_invalid_observer_requests_max_attachment_mb_rejected():
+    raw = _example_dict()
+    raw["observer_requests"] = {"max_attachment_mb": 0}
+    with pytest.raises(ConfigError):
+        config_from_dict(raw)
+
+
 def test_api_key_direct_wins(monkeypatch):
     cfg = Config()
     cfg.llm.api_key = "sk-direct"
