@@ -116,7 +116,7 @@ data/
 ├── SOUL.md                    # identity — written only by soul.py. Committed.
 ├── state.json                 # UI snapshot. Not committed (volatile).
 ├── agent.lock                 # pid+timestamp lock. Not committed.
-├── journal/steps-YYYY-MM.jsonl  # step records, monthly rotation. Committed (alongside reports).
+├── journal/steps-YYYY-MM-DD-HH-NN.jsonl  # step records, hourly rotation (UTC) in 50-record chunks (NN from 00). Legacy monthly steps-YYYY-MM.jsonl still read. Committed (alongside reports).
 ├── notes/step-XXXXXX.md       # ACT outputs. Committed (alongside reports).
 ├── wiki/<slug>.md             # wiki sources (frontmatter + body + [[links]]). Committed (wiki.py).
 ├── index/wiki.sqlite3         # derived wiki FTS5 + link-graph index. Not committed (rebuildable).

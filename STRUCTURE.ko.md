@@ -111,7 +111,7 @@ data/
 ├── SOUL.md                    # 정체성 — soul.py만 씀. 커밋됨.
 ├── state.json                 # UI 스냅샷. 커밋 안 함(휘발성).
 ├── agent.lock                 # pid+timestamp 락. 커밋 안 함.
-├── journal/steps-YYYY-MM.jsonl  # 스텝 기록, 월별 로테이션. 커밋됨(리포트와 함께).
+├── journal/steps-YYYY-MM-DD-HH-NN.jsonl  # 스텝 기록, 시간별 로테이션(UTC, 청크당 최대 50줄, NN은 00부터). 레거시 월별 steps-YYYY-MM.jsonl도 계속 읽음. 커밋됨(리포트와 함께).
 ├── notes/step-XXXXXX.md       # ACT 산출물. 커밋됨(리포트와 함께).
 ├── wiki/<slug>.md             # 위키 원본(frontmatter+본문+[[링크]]). 커밋됨(wiki.py).
 ├── index/wiki.sqlite3         # 위키 FTS5+링크 그래프 파생 인덱스. 커밋 안 함(재빌드 가능).

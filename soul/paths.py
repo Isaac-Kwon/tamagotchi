@@ -139,10 +139,16 @@ class DataPaths:
         return self.root / "logs"
 
     # -- derived paths ------------------------------------------------------ #
-    def journal_file(self, when: datetime | None = None) -> Path:
-        """Monthly-rotated journal file: journal/steps-YYYY-MM.jsonl."""
+    def journal_hour_prefix(self, when: datetime | None = None) -> str:
+        """Filename prefix for a UTC hour's journal chunks: ``steps-YYYY-MM-DD-HH``.
+
+        The full chunk file is ``<prefix>-NN.jsonl`` (see
+        :func:`soul.storage.journal.append_step`). Chunk selection depends on
+        existing file contents, so it lives in ``journal.py``; this stays a
+        pure timestamp formatter.
+        """
         when = when or datetime.now(timezone.utc)
-        return self.journal_dir / f"steps-{when:%Y-%m}.jsonl"
+        return f"steps-{when:%Y-%m-%d-%H}"
 
     def transcript_file(self, step_id: str) -> Path:
         """Per-step transcript file: transcripts/<step_id>.jsonl."""

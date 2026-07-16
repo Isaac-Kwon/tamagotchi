@@ -1,9 +1,16 @@
-"""Journal — append-only JSONL of step records, monthly rotation (spec P4).
+"""Journal — append-only JSONL of step records, hourly rotation in 50-record chunks.
 
-Each step is one JSON line in ``journal/steps-YYYY-MM.jsonl``. The full step
-record schema (spec P4) is produced by :func:`new_step_record`; fields not yet
-implemented in this milestone are present with ``null`` values so downstream
-consumers can rely on a stable shape.
+Each step is one JSON line in ``journal/steps-YYYY-MM-DD-HH-NN.jsonl``, where the
+UTC hour rotates the file and ``NN`` is a zero-padded chunk index (starting at
+``00``) that rolls once a chunk reaches :data:`MAX_CHUNK_LINES` records. This is
+a deliberate divergence from spec P4's monthly rotation (``steps-YYYY-MM.jsonl``)
+— smaller hour/chunk files keep the append-only log crash-safe and easy to diff.
+Old monthly files are still read (see :func:`_iter_journal_files`); they are
+never migrated or rewritten (append-only; ``data/`` is its own git repo).
+
+The full step record schema (spec P4) is produced by :func:`new_step_record`;
+fields not yet implemented in this milestone are present with ``null`` values so
+downstream consumers can rely on a stable shape.
 """
 
 from __future__ import annotations
@@ -15,6 +22,10 @@ from pathlib import Path
 from typing import Any
 
 from ..paths import DataPaths
+
+# Max records per journal chunk before rolling to the next NN (divergence from
+# spec P4's monthly rotation — see module docstring).
+MAX_CHUNK_LINES = 50
 
 
 def _now_iso() -> str:
@@ -59,26 +70,84 @@ def new_step_record(step_id: str, *, ts: str | None = None, **overrides: Any) ->
     return record
 
 
+def _count_nonempty_lines(path: Path) -> int:
+    """Number of non-blank lines already in a chunk file (0 if missing)."""
+    if not path.exists():
+        return 0
+    with path.open("r", encoding="utf-8") as fh:
+        return sum(1 for line in fh if line.strip())
+
+
+def _current_chunk_file(paths: DataPaths, when: datetime) -> Path:
+    """Pick the hour's chunk file to append to, rolling when it is full.
+
+    Lists existing ``steps-YYYY-MM-DD-HH-*.jsonl`` chunks for ``when``'s UTC hour,
+    takes the highest ``NN``, and rolls to ``NN+1`` once that chunk holds
+    :data:`MAX_CHUNK_LINES` records. No state is cached — the count is recomputed
+    on every append (single-writer per CLAUDE.md, so no locking is needed).
+    """
+    prefix = paths.journal_hour_prefix(when)
+    existing = sorted(paths.journal_dir.glob(f"{prefix}-*.jsonl"))
+    if existing:
+        latest = existing[-1]
+        # Derive NN from the highest-sorted chunk (fixed-width, so lexicographic
+        # order matches numeric order).
+        nn = int(latest.stem.rsplit("-", 1)[1])
+        if _count_nonempty_lines(latest) >= MAX_CHUNK_LINES:
+            nn += 1
+    else:
+        nn = 0
+    return paths.journal_dir / f"{prefix}-{nn:02d}.jsonl"
+
+
 def append_step(paths: DataPaths, record: dict[str, Any]) -> Path:
-    """Append one step record as a JSON line to the current monthly journal."""
+    """Append one step record as a JSON line to the current hourly journal chunk."""
     when = datetime.now(timezone.utc)
-    path = paths.journal_file(when)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    paths.journal_dir.mkdir(parents=True, exist_ok=True)
+    path = _current_chunk_file(paths, when)
     line = json.dumps(record, ensure_ascii=False)
     with path.open("a", encoding="utf-8") as fh:
         fh.write(line + "\n")
     return path
 
 
+def _journal_sort_key(path: Path) -> tuple[int, int, int, int, int, str]:
+    """Chronological sort key spanning both filename schemes.
+
+    A plain lexicographic sort does *not* order the two schemes correctly:
+    ``'-'`` (0x2D) < ``'.'`` (0x2E), so ``steps-2026-07-16-09-00.jsonl`` would
+    sort *before* the same month's ``steps-2026-07.jsonl`` — reversing the true
+    order (the monthly backlog predates the hourly chunks it was migrated to). We
+    parse the numeric components instead and pad them to a fixed
+    ``(year, month, day, hour, chunk)`` tuple: legacy monthly files
+    (``steps-YYYY-MM``) get sentinel day/hour/chunk of ``-1`` so they read ahead
+    of that month's hourly chunks (``steps-YYYY-MM-DD-HH-NN``). Unparseable names
+    sort last, by name.
+    """
+    nums = path.stem.split("-")[1:]  # drop the "steps" prefix
+    try:
+        ints = [int(x) for x in nums]
+    except ValueError:
+        ints = []
+    if 2 <= len(ints) <= 5:
+        # Pad the numeric components with -1 so shorter (coarser) schemes sort
+        # ahead of the finer chunks nested within them: monthly (year, month)
+        # reads before that month's hourly (year, month, day, hour, chunk).
+        year, month, day, hour, chunk = (ints + [-1, -1, -1, -1, -1])[:5]
+    else:  # unknown scheme — sort last, deterministically by name
+        year, month, day, hour, chunk = 10**9, 99, 99, 99, 99
+    return (year, month, day, hour, chunk, path.name)
+
+
 def _iter_journal_files(paths: DataPaths) -> list[Path]:
-    """All journal files, chronologically ordered by their YYYY-MM name."""
+    """All journal files (hourly chunks + legacy monthly), chronologically ordered."""
     if not paths.journal_dir.exists():
         return []
-    return sorted(paths.journal_dir.glob("steps-*.jsonl"))
+    return sorted(paths.journal_dir.glob("steps-*.jsonl"), key=_journal_sort_key)
 
 
 def read_all(paths: DataPaths) -> list[dict[str, Any]]:
-    """Read every step record across all monthly files, in chronological order."""
+    """Read every step record across all journal files, in chronological order."""
     records: list[dict[str, Any]] = []
     for f in _iter_journal_files(paths):
         for raw in f.read_text(encoding="utf-8").splitlines():
@@ -93,7 +162,7 @@ def read_all(paths: DataPaths) -> list[dict[str, Any]]:
 
 
 def tail(paths: DataPaths, n: int) -> list[dict[str, Any]]:
-    """Return the last ``n`` step records across monthly files (chronological)."""
+    """Return the last ``n`` step records across journal files (chronological)."""
     if n <= 0:
         return []
     records = read_all(paths)
