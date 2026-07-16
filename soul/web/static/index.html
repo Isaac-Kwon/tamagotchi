@@ -267,6 +267,48 @@
     font-family: inherit;
   }
 
+  .outbox-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .outbox-controls select { margin-bottom: 0; }
+  .outbox-list { display: flex; flex-direction: column; gap: 8px; }
+  .outbox-row {
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    background: #fff;
+    padding: 8px 10px;
+    font-size: 12.5px;
+  }
+  .outbox-row-head { display: flex; align-items: flex-start; gap: 8px; }
+  .outbox-text { flex: 1; word-break: break-word; }
+  .outbox-meta { font-size: 11.5px; color: var(--muted); margin-top: 4px; }
+  .outbox-status {
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .outbox-status-open { background: #eef2fa; color: var(--accent); }
+  .outbox-status-resolved { background: #e5f2e5; color: #3c7a3c; }
+  .outbox-status-declined { background: #f6e0e0; color: var(--accent-warn); }
+  .outbox-status-ignored { background: #ece7db; color: var(--muted); }
+  .outbox-resolve-form { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .outbox-note-input {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid var(--panel-border);
+    border-radius: 5px;
+    font-family: inherit;
+    font-size: 12.5px;
+  }
+  .outbox-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .outbox-actions button { padding: 5px 10px; }
+  .outbox-btn-decline { background: #f6e0e0; color: var(--accent-warn); }
+  .outbox-btn-ignore, .outbox-btn-attach { background: #fff; color: var(--muted); }
+  .outbox-file-input { font-size: 11.5px; }
+  .outbox-detail { margin-top: 6px; font-size: 12px; }
+  .outbox-attachment { margin-top: 4px; font-size: 11.5px; color: var(--accent); word-break: break-all; }
+  .outbox-row-status { font-size: 11.5px; color: var(--muted); }
+
   .revealed-note {
     font-size: 12.5px;
     background: #f6f0e2;

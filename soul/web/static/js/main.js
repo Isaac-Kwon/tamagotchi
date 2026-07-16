@@ -130,6 +130,7 @@ function boot() {
         setConnStatus(transport === "sse" ? "실시간 연결" : "폴링 모드 (5초)");
         render();
         panels.refreshRevealed();
+        panels.setOutboxBadge(state && state.open_requests ? state.open_requests : 0);
       },
       { pollMs: 5000 }
     );

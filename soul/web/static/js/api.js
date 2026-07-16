@@ -20,6 +20,8 @@
 //   POST /api/chat/end             {session_id}
 //   GET  /api/chat/{session_id}
 //   POST /api/inbox                {kind:"message"|"gift", content, url?}
+//   GET  /api/outbox?status=       {requests:[...]}
+//   POST /api/outbox/{id}/resolve  multipart form (status, note?, file?)
 //
 // Mock mode: append ?mock=1 to the page URL to serve canned in-JS fixtures
 // instead of hitting the network. Useful for UI development without a
@@ -82,6 +84,7 @@ function mockState() {
     },
     next_wake_at: new Date(Date.now() + 5 * 60000).toISOString(),
     today_report: null,
+    open_requests: 1,
     updated_at: new Date().toISOString(),
   };
 }
@@ -91,6 +94,29 @@ const MOCK_SOUL_MD = `# SOUL\n\n(목업 모드) 아직 거의 비어 있습니�
 const MOCK_WIKI_PAGES = [
   { slug: "mock-page", title: "목업 페이지", updated: new Date().toISOString() },
   { slug: "another-page", title: "다른 페이지", updated: new Date().toISOString() },
+];
+
+const MOCK_OUTBOX = [
+  {
+    id: "req-0002",
+    ts: new Date(Date.now() - 3600000).toISOString(),
+    step_id: "step-000012",
+    text: "numpy 패키지를 설치해줄 수 있을까요? code_experiment에서 필요합니다.",
+    status: "open",
+    resolved_ts: null,
+    observer_note: null,
+    attachment: null,
+  },
+  {
+    id: "req-0001",
+    ts: new Date(Date.now() - 86400000).toISOString(),
+    step_id: "step-000004",
+    text: "이 논문을 읽고 싶은데 접근이 막혀 있습니다. 받아볼 수 있을까요?",
+    status: "resolved",
+    resolved_ts: new Date(Date.now() - 82800000).toISOString(),
+    observer_note: "첨부해두었습니다. 도움이 되길 바랍니다.",
+    attachment: "req-0001/paper.pdf",
+  },
 ];
 
 function delay(ms) {
@@ -168,6 +194,17 @@ async function mockFetch(path, opts) {
   if (p === "/api/chat/end" && method === "POST") return { ok: true };
   if (p.startsWith("/api/chat/")) return { session_id: p.split("/").pop(), turns: [] };
   if (p === "/api/inbox" && method === "POST") return { ok: true };
+  if (p === "/api/outbox" && method === "GET") {
+    const status = url.searchParams.get("status");
+    const requests = status ? MOCK_OUTBOX.filter((r) => r.status === status) : MOCK_OUTBOX;
+    return { requests };
+  }
+  if (p.startsWith("/api/outbox/") && p.endsWith("/resolve") && method === "POST") {
+    const id = p.split("/")[3];
+    const body = opts && opts.body;
+    const status = body && typeof body.get === "function" ? body.get("status") : "resolved";
+    return { id, status };
+  }
 
   return { error: "mock: unknown path " + p };
 }
@@ -178,8 +215,12 @@ async function mockFetch(path, opts) {
 
 async function request(path, opts) {
   if (MOCK) return mockFetch(path, opts);
+  // FormData bodies must keep the browser-generated multipart Content-Type
+  // (with boundary) — never force application/json on them.
+  const isForm = typeof FormData !== "undefined" && opts && opts.body instanceof FormData;
+  const baseHeaders = isForm ? {} : { "Content-Type": "application/json" };
   const res = await fetch(path, {
-    headers: { "Content-Type": "application/json", ...(opts && opts.headers) },
+    headers: { ...baseHeaders, ...(opts && opts.headers) },
     ...opts,
   });
   if (!res.ok) {
@@ -207,6 +248,13 @@ function get(path) {
 
 function post(path, body) {
   return request(path, { method: "POST", body: JSON.stringify(body || {}) });
+}
+
+// Multipart/form-data POST: pass the FormData through untouched and do NOT set
+// a JSON Content-Type — the browser must set multipart boundary itself.
+function postForm(path, formData) {
+  if (MOCK) return mockFetch(path, { method: "POST", body: formData });
+  return request(path, { method: "POST", body: formData, headers: {} });
 }
 
 // ---------------------------------------------------------------------------
@@ -241,6 +289,9 @@ export const api = {
   getChatSession: (sessionId) => get(`/api/chat/${encodeURIComponent(sessionId)}`),
 
   postInbox: (kind, content, url) => post("/api/inbox", { kind, content, url }),
+
+  getOutbox: (status) => get(`/api/outbox${status ? `?status=${encodeURIComponent(status)}` : ""}`),
+  resolveOutbox: (id, formData) => postForm(`/api/outbox/${encodeURIComponent(id)}/resolve`, formData),
 };
 
 // ---------------------------------------------------------------------------

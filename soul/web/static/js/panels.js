@@ -7,7 +7,8 @@
 //   ④ report — 일일 회고 리포트 목록/뷰어
 //   ⑤ chat   — 대화 (기록 토글 기본 OFF, "기억되지 않음" 명시)
 //   ⑥ inbox  — 선물/메시지 보내기 (POST /api/inbox)
-//   ⑦ revealed — stated vs revealed 흥미 패널
+//   ⑦ outbox — 요청: 에이전트가 남긴 요청 투두리스트 (완료/거절/무시/다시 열기)
+//   ⑧ revealed — stated vs revealed 흥미 패널
 //   journal (secondary/raw) — 스텝 원문 목록
 //
 // Plain DOM + the CSS classes defined in index.html's <style>. No frameworks.
@@ -52,6 +53,7 @@ const TABS = [
   { id: "report", label: "일일 리포트" },
   { id: "chat", label: "대화" },
   { id: "inbox", label: "선물/메시지" },
+  { id: "outbox", label: "요청" },
   { id: "revealed", label: "말과 행동" },
   { id: "journal", label: "저널(원문)" },
 ];
@@ -508,6 +510,171 @@ export function initPanels({ root, api, onChatStateChange }) {
   }
 
   // ---------------------------------------------------------------
+  // 요청 (관찰자 아웃박스 — 돌봄 투두리스트)
+  // ---------------------------------------------------------------
+  {
+    const sec = sections.outbox;
+    sec.appendChild(el("h3", { text: "에이전트의 요청" }));
+    sec.appendChild(
+      el("p", {
+        class: "panel-note",
+        text: "에이전트가 관찰자에게 남긴 요청 목록입니다. 완료/거절하면 다음 활동 시점에 에이전트에게 전달됩니다. 무시하면 목록에서 사라지고 에이전트에게는 아무것도 전달되지 않습니다 (되돌릴 수 있음).",
+      })
+    );
+
+    const FILTERS = [
+      { value: "all", label: "전체" },
+      { value: "open", label: "열림" },
+      { value: "resolved", label: "완료" },
+      { value: "declined", label: "거절" },
+      { value: "ignored", label: "무시" },
+    ];
+    const STATUS_LABEL = { open: "열림", resolved: "완료", declined: "거절", ignored: "무시" };
+
+    const filterSel = el(
+      "select",
+      {},
+      FILTERS.map((f) => el("option", { value: f.value, text: f.label }))
+    );
+    const refreshBtn = el("button", { text: "새로고침" });
+    const controls = el("div", { class: "outbox-controls" }, [filterSel, refreshBtn]);
+    const listHost = el("div", { class: "outbox-list" });
+    sec.appendChild(controls);
+    sec.appendChild(listHost);
+
+    // "전체" is the active caretaker view: open + resolved + declined, but not
+    // ignored. Ignored requests are only reachable via the "무시" filter.
+    function matchesFilter(status, filter) {
+      if (filter === "all") return status !== "ignored";
+      return status === filter;
+    }
+
+    async function reload() {
+      listHost.innerHTML = "불러오는 중…";
+      let requests;
+      try {
+        const res = await api.getOutbox();
+        requests = (res && res.requests) || [];
+      } catch (e) {
+        listHost.innerHTML = "";
+        listHost.appendChild(emptyNote("요청 목록을 불러오지 못했습니다: " + e.message));
+        return;
+      }
+      const rows = requests.filter((r) => matchesFilter(r.status, filterSel.value));
+      listHost.innerHTML = "";
+      if (!rows.length) {
+        listHost.appendChild(emptyNote("표시할 요청이 없습니다."));
+        return;
+      }
+      rows.forEach((r) => listHost.appendChild(buildRow(r)));
+    }
+
+    function buildRow(r) {
+      const row = el("div", { class: "outbox-row" });
+      const head = el("div", { class: "outbox-row-head" }, [
+        el("div", { class: "outbox-text" }, [
+          el("div", { text: r.text || "(내용 없음)" }),
+          el("div", { class: "outbox-meta", text: fmtTime(r.ts) + (r.step_id ? " · " + r.step_id : "") }),
+        ]),
+        el("span", { class: "outbox-status outbox-status-" + r.status, text: STATUS_LABEL[r.status] || r.status }),
+      ]);
+      row.appendChild(head);
+
+      if (r.status === "open") {
+        row.appendChild(buildResolveForm(r));
+      } else if (r.status === "resolved" || r.status === "declined") {
+        if (r.observer_note) {
+          row.appendChild(el("div", { class: "outbox-detail", text: "메모: " + r.observer_note }));
+        }
+        if (r.attachment) {
+          row.appendChild(el("div", { class: "outbox-attachment", text: "첨부: " + r.attachment.split("/").pop() }));
+        }
+      } else if (r.status === "ignored") {
+        const statusMsg = el("div", { class: "panel-note" });
+        statusMsg.style.display = "none";
+        const reopenBtn = el("button", { text: "다시 열기" });
+        reopenBtn.addEventListener("click", async () => {
+          reopenBtn.disabled = true;
+          statusMsg.style.display = "none";
+          try {
+            const fd = new FormData();
+            fd.append("status", "reopened");
+            await api.resolveOutbox(r.id, fd);
+            await reload();
+          } catch (e) {
+            reopenBtn.disabled = false;
+            statusMsg.style.display = "";
+            statusMsg.textContent = "다시 열기 실패: " + e.message;
+          }
+        });
+        row.appendChild(el("div", { class: "outbox-actions" }, [reopenBtn]));
+        row.appendChild(statusMsg);
+      }
+      return row;
+    }
+
+    function buildResolveForm(r) {
+      const form = el("div", { class: "outbox-resolve-form" });
+      const noteInput = el("input", { type: "text", class: "outbox-note-input", placeholder: "메모 (선택)" });
+      const fileInput = el("input", { type: "file", class: "outbox-file-input" });
+      fileInput.style.display = "none";
+      const statusMsg = el("div", { class: "panel-note" });
+      statusMsg.style.display = "none";
+
+      const doneBtn = el("button", { text: "완료" });
+      const declineBtn = el("button", { class: "outbox-btn-decline", text: "거절" });
+      const ignoreBtn = el("button", { class: "outbox-btn-ignore", text: "무시" });
+      const attachBtn = el("button", { class: "outbox-btn-attach", text: "파일 첨부" });
+
+      attachBtn.addEventListener("click", () => {
+        fileInput.style.display = fileInput.style.display === "none" ? "" : "none";
+      });
+
+      function setBusy(busy) {
+        [doneBtn, declineBtn, ignoreBtn, attachBtn].forEach((b) => (b.disabled = busy));
+      }
+
+      // includeFile: 완료/거절 may carry an attachment; 무시 sends no note/file.
+      async function submit(status, includeFile) {
+        setBusy(true);
+        statusMsg.style.display = "none";
+        try {
+          const fd = new FormData();
+          fd.append("status", status);
+          if (status !== "ignored") {
+            const note = noteInput.value.trim();
+            if (note) fd.append("note", note);
+            if (includeFile && fileInput.files && fileInput.files.length) {
+              fd.append("file", fileInput.files[0]);
+            }
+          }
+          await api.resolveOutbox(r.id, fd);
+          await reload();
+        } catch (e) {
+          setBusy(false);
+          statusMsg.style.display = "";
+          statusMsg.textContent = "처리 실패: " + e.message;
+        }
+      }
+
+      doneBtn.addEventListener("click", () => submit("resolved", true));
+      declineBtn.addEventListener("click", () => submit("declined", true));
+      ignoreBtn.addEventListener("click", () => submit("ignored", false));
+
+      form.appendChild(noteInput);
+      form.appendChild(el("div", { class: "outbox-actions" }, [doneBtn, declineBtn, ignoreBtn, attachBtn]));
+      form.appendChild(fileInput);
+      form.appendChild(statusMsg);
+      return form;
+    }
+
+    filterSel.addEventListener("change", reload);
+    refreshBtn.addEventListener("click", reload);
+
+    loaders.outbox = { load: reload };
+  }
+
+  // ---------------------------------------------------------------
   // ⑦ stated vs revealed
   // ---------------------------------------------------------------
   {
@@ -596,6 +763,10 @@ export function initPanels({ root, api, onChatStateChange }) {
   const panels = {
     openStep: (stepId) => openStepDetail(stepId),
     activate,
+    setOutboxBadge: (count) => {
+      const btn = buttons.outbox;
+      if (btn) btn.textContent = count > 0 ? `요청 (${count})` : "요청";
+    },
     refreshRevealed: () => {
       if (loaders.revealed) {
         loaders.revealed._loaded = false;
