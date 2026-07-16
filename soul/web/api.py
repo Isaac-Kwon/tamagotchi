@@ -2,23 +2,26 @@
 
 Every interaction the UI needs is a REST/SSE endpoint here; the web UI is just
 one client (a mobile app could use the same API — spec §2.4). The server is
-read-only over the data dir except the three allowed writes (inbox pending, chat
-logs, control/chat.json), all funnelled through dedicated modules.
+read-only over the data dir except the four allowed writes (inbox pending, chat
+logs, control/chat.json, and outbox/resolutions.jsonl (append) + attachment
+files under outbox/attachments/ (create-only) via the resolve endpoint), all
+funnelled through dedicated modules.
 """
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from ..config import Config
 from ..knowledge import wiki
 from ..paths import DataPaths
-from ..storage import inbox, journal, state as state_store
+from ..storage import inbox, journal, outbox, state as state_store
 from ..agent import report as report_mod
 from ..agent import soul
 from . import events, gitview
@@ -254,12 +257,92 @@ def build_router(cfg: Config, paths: DataPaths, chat_manager: ChatManager) -> AP
         record = inbox.append_pending(paths, body.content, kind=body.kind, meta=meta)
         return {"id": record["id"]}
 
+    # -- outbox (observer requests, 4th allowed write) --------------------- #
+    @router.get("/api/outbox")
+    def get_outbox(status: str | None = None) -> dict[str, Any]:
+        try:
+            requests = outbox.list_requests(paths, status=status)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        requests.reverse()  # newest first
+        return {"requests": requests}
+
+    @router.post("/api/outbox/{request_id}/resolve")
+    async def post_outbox_resolve(
+        request_id: str,
+        status: str = Form(...),
+        note: str | None = Form(None),
+        file: UploadFile | None = File(None),
+    ) -> dict[str, Any]:
+        if status not in outbox.VALID_STATUSES:
+            raise HTTPException(
+                status_code=422,
+                detail=f"status must be one of {list(outbox.VALID_STATUSES)}",
+            )
+
+        attachment: str | None = None
+        if file is not None and file.filename:
+            if status not in ("resolved", "declined"):
+                raise HTTPException(
+                    status_code=422,
+                    detail="a file may only be attached to a resolved or "
+                           "declined request",
+                )
+            name = _safe_attachment_name(file.filename)
+            data = await _read_capped(
+                file, cfg.observer_requests.max_attachment_mb
+            )
+            dest_dir = paths.outbox_attachments_dir / request_id
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            (dest_dir / name).write_bytes(data)
+            attachment = f"{request_id}/{name}"
+
+        try:
+            outbox.append_resolution(
+                paths, request_id, status, note=note, attachment=attachment
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="request not found") from exc
+        except outbox.OutboxStateError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+        return {"id": request_id, "status": status}
+
     return router
 
 
 # --------------------------------------------------------------------------- #
 # helpers
 # --------------------------------------------------------------------------- #
+def _safe_attachment_name(filename: str) -> str:
+    """Reduce an uploaded filename to a safe basename (no path separators or
+    null bytes); fall back to ``attachment`` when nothing usable remains."""
+    name = os.path.basename(filename.replace("\\", "/")).replace("\x00", "").strip()
+    if not name or name in (".", ".."):
+        return "attachment"
+    return name
+
+
+async def _read_capped(file: UploadFile, max_mb: int) -> bytes:
+    """Read an upload into memory, rejecting anything over ``max_mb`` MB with a
+    413 before buffering the whole (potentially unbounded) input."""
+    limit = max_mb * 1024 * 1024
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await file.read(1024 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > limit:
+            raise HTTPException(
+                status_code=413,
+                detail=f"attachment exceeds {max_mb} MB limit",
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 def _find_step(paths: DataPaths, step_id: str) -> dict[str, Any] | None:
     for s in journal.read_all(paths):
         if s.get("id") == step_id:

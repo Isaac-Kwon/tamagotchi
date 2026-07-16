@@ -12,7 +12,9 @@ and yields to (preemption, spec P7). Recording is the user's choice:
       was recorded, spec P7 step 6).
 
 The session store is in-memory (per API-server process). This module and the
-inbox/control writes are the only data-dir writes the API server performs.
+inbox/control writes, plus the outbox resolve endpoint (outbox/resolutions.jsonl
+append + attachment files under outbox/attachments/), are the only data-dir
+writes the API server performs.
 """
 
 from __future__ import annotations

@@ -12,7 +12,7 @@ from soul.agent import loop
 from soul.agent.fake_llm import FakeLLM
 from soul.agent.preempt import StepController
 from soul.knowledge import wiki
-from soul.storage import control, state as state_store
+from soul.storage import control, outbox, state as state_store
 from soul.web.server import create_app
 
 
@@ -258,6 +258,107 @@ def test_post_inbox_gift_with_url(client):
 def test_post_inbox_bad_kind(client):
     assert client.post("/api/inbox",
                        json={"kind": "spam", "content": "x"}).status_code == 422
+
+
+# --------------------------------------------------------------------------- #
+# outbox (observer requests, 4th allowed write)
+# --------------------------------------------------------------------------- #
+def test_outbox_empty(client):
+    assert client.get("/api/outbox").json() == {"requests": []}
+
+
+def test_outbox_lists_seeded_newest_first(client):
+    outbox.append_request(client._paths, "please install numpy", step_id="s1")
+    outbox.append_request(client._paths, "fetch this paper", step_id="s2")
+    reqs = client.get("/api/outbox").json()["requests"]
+    assert [r["text"] for r in reqs] == ["fetch this paper", "please install numpy"]
+    assert all(r["status"] == "open" for r in reqs)
+
+
+def test_outbox_resolve_happy_path(client):
+    rid = outbox.append_request(client._paths, "please install numpy")["id"]
+    r = client.post(f"/api/outbox/{rid}/resolve",
+                    data={"status": "resolved", "note": "done"})
+    assert r.status_code == 200
+    assert r.json() == {"id": rid, "status": "resolved"}
+
+    req = client.get("/api/outbox").json()["requests"][0]
+    assert req["status"] == "resolved"
+    assert req["observer_note"] == "done"
+
+
+def test_outbox_resolve_second_time_409(client):
+    rid = outbox.append_request(client._paths, "x")["id"]
+    client.post(f"/api/outbox/{rid}/resolve", data={"status": "resolved"})
+    r = client.post(f"/api/outbox/{rid}/resolve", data={"status": "declined"})
+    assert r.status_code == 409
+
+
+def test_outbox_resolve_unknown_id_404(client):
+    r = client.post("/api/outbox/req-9999/resolve", data={"status": "resolved"})
+    assert r.status_code == 404
+
+
+def test_outbox_resolve_bad_status_422(client):
+    rid = outbox.append_request(client._paths, "x")["id"]
+    r = client.post(f"/api/outbox/{rid}/resolve", data={"status": "bogus"})
+    assert r.status_code == 422
+
+
+def test_outbox_status_filter(client):
+    open_id = outbox.append_request(client._paths, "still open")["id"]
+    done_id = outbox.append_request(client._paths, "finished")["id"]
+    client.post(f"/api/outbox/{done_id}/resolve", data={"status": "resolved"})
+
+    open_reqs = client.get("/api/outbox", params={"status": "open"}).json()["requests"]
+    assert [r["id"] for r in open_reqs] == [open_id]
+    done_reqs = client.get("/api/outbox",
+                           params={"status": "resolved"}).json()["requests"]
+    assert [r["id"] for r in done_reqs] == [done_id]
+
+
+def test_outbox_bad_status_filter_422(client):
+    assert client.get("/api/outbox", params={"status": "bogus"}).status_code == 422
+
+
+def test_outbox_resolve_with_file_upload(client):
+    rid = outbox.append_request(client._paths, "fetch this paper")["id"]
+    r = client.post(
+        f"/api/outbox/{rid}/resolve",
+        data={"status": "resolved", "note": "attached"},
+        files={"file": ("paper.txt", b"hello world", "text/plain")},
+    )
+    assert r.status_code == 200
+
+    saved = client._paths.outbox_attachments_dir / rid / "paper.txt"
+    assert saved.exists()
+    assert saved.read_bytes() == b"hello world"
+
+    req = client.get("/api/outbox").json()["requests"][0]
+    assert req["attachment"] == f"{rid}/paper.txt"
+
+
+def test_outbox_resolve_oversize_upload_413(client):
+    client._config.observer_requests.max_attachment_mb = 1
+    rid = outbox.append_request(client._paths, "big file please")["id"]
+    r = client.post(
+        f"/api/outbox/{rid}/resolve",
+        data={"status": "resolved"},
+        files={"file": ("big.bin", b"x" * (2 * 1024 * 1024), "application/octet-stream")},
+    )
+    assert r.status_code == 413
+    # No resolution was recorded — the request is still open.
+    assert client.get("/api/outbox").json()["requests"][0]["status"] == "open"
+
+
+def test_outbox_resolve_file_with_ignored_status_422(client):
+    rid = outbox.append_request(client._paths, "x")["id"]
+    r = client.post(
+        f"/api/outbox/{rid}/resolve",
+        data={"status": "ignored"},
+        files={"file": ("x.txt", b"data", "text/plain")},
+    )
+    assert r.status_code == 422
 
 
 # --------------------------------------------------------------------------- #

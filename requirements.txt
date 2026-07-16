@@ -4,6 +4,9 @@
 httpx
 fastapi
 uvicorn
+# FastAPI multipart form parsing — the outbox resolve endpoint accepts
+# multipart/form-data (status/note fields + an optional file upload).
+python-multipart
 mcp
 # IANA timezone database — zoneinfo has no bundled DB on Windows (spec P5:
 # report scheduling uses Asia/Seoul via zoneinfo).
