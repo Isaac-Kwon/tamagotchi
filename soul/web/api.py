@@ -217,13 +217,68 @@ def build_router(cfg: Config, paths: DataPaths, chat_manager: ChatManager) -> AP
     # -- config (read-only display fields for the settings popover) ---------#
     @router.get("/api/config")
     def get_config() -> dict[str, Any]:
-        # Safe display fields only — never secrets (api_key, allowed_networks).
+        # Safe display fields only, grouped by config section. Secrets and
+        # deployment/network internals are NEVER exposed here:
+        #   llm.api_key, llm.api_key_env, agent.data_dir, web.host, web.port,
+        #   web.allowed_networks.
         return {
-            "heartbeat_minutes": cfg.agent.heartbeat_minutes,
-            "mode": cfg.agent.mode,
-            "model": cfg.llm.model,
-            "sse_check_ms": cfg.web.sse_check_ms,
-            "skill_auto_disable_failures": cfg.skills.auto_disable_after_failures,
+            "llm": {
+                "model": cfg.llm.model,
+                "base_url": cfg.llm.base_url,
+                "temperature": cfg.llm.temperature,
+                "max_output_tokens": cfg.llm.max_output_tokens,
+                "timeout_seconds": cfg.llm.timeout_seconds,
+                "max_retries": cfg.llm.max_retries,
+                "mock": cfg.llm.mock,
+            },
+            "agent": {
+                "mode": cfg.agent.mode,
+                "heartbeat_minutes": cfg.agent.heartbeat_minutes,
+                "min_step_gap_seconds": cfg.agent.min_step_gap_seconds,
+                "step_timeout_minutes": cfg.agent.step_timeout_minutes,
+                "context_recent_steps": cfg.agent.context_recent_steps,
+                "serendipity_rate": cfg.agent.serendipity_rate,
+                "soul_max_chars": cfg.agent.soul_max_chars,
+                "autosave_every_steps": cfg.agent.autosave_every_steps,
+                "consecutive_error_backoff": cfg.agent.consecutive_error_backoff,
+            },
+            "chat": {
+                "record_default": cfg.chat.record_default,
+                "idle_end_seconds": cfg.chat.idle_end_seconds,
+                "preempt_max_wait_minutes": cfg.chat.preempt_max_wait_minutes,
+            },
+            "sandbox": {
+                "enabled": cfg.sandbox.enabled,
+                "backend": cfg.sandbox.backend,
+                "timeout_seconds": cfg.sandbox.timeout_seconds,
+            },
+            "skills": {
+                "enabled": cfg.skills.enabled,
+                "timeout_seconds": cfg.skills.timeout_seconds,
+                "auto_disable_after_failures": cfg.skills.auto_disable_after_failures,
+            },
+            "web_actions": {
+                "enabled": cfg.web_actions.enabled,
+                "http_timeout_seconds": cfg.web_actions.http_timeout_seconds,
+                "max_page_kb": cfg.web_actions.max_page_kb,
+            },
+            "knowledge": {
+                "max_tool_rounds": cfg.knowledge.max_tool_rounds,
+                "fts_snippet_len": cfg.knowledge.fts_snippet_len,
+            },
+            "observer_requests": {
+                "enabled": cfg.observer_requests.enabled,
+                "max_open": cfg.observer_requests.max_open,
+                "max_attachment_mb": cfg.observer_requests.max_attachment_mb,
+            },
+            "report": {
+                "time": cfg.report.time,
+                "timezone": cfg.report.timezone,
+                "language": cfg.report.language,
+            },
+            "web": {
+                "sse_check_ms": cfg.web.sse_check_ms,
+            },
         }
 
     # -- wiki -------------------------------------------------------------- #

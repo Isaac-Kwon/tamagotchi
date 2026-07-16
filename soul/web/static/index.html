@@ -90,15 +90,9 @@ html,body{margin:0;padding:0}
 
   <!-- ===== 팝오버 (설정 / 정직한 프레이밍) — 기본 숨김, main.js가 토글 ===== -->
   <div style="position:relative;z-index:20">
-    <div id="popover-config" style="display:none;position:absolute;top:6px;right:16px;width:320px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:var(--sp-4);font-size:var(--fs-sm)">
+    <div id="popover-config" style="display:none;position:absolute;top:6px;right:16px;width:360px;max-height:70vh;overflow-y:auto;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:var(--sp-4);font-size:var(--fs-sm)">
       <strong style="display:block;margin-bottom:10px">설정 (읽기 전용)</strong>
-      <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:var(--fs-sm);color:var(--ink-soft)">
-        <span>깨어남 주기</span><span id="cfg-heartbeat" style="font-family:var(--mono);color:var(--ink);text-align:right">—</span>
-        <span>모델</span><span id="cfg-model" style="font-family:var(--mono);color:var(--ink);text-align:right">—</span>
-        <span>전송 모드</span><span id="cfg-transport" style="font-family:var(--mono);color:var(--ink);text-align:right">—</span>
-        <span>스킬 자동 비활성</span><span id="cfg-skill" style="font-family:var(--mono);color:var(--ink);text-align:right">—</span>
-        <span>기록 정책</span><span id="cfg-record" style="font-family:var(--mono);color:var(--ink);text-align:right">—</span>
-      </div>
+      <div id="config-body"></div>
       <button id="config-close" style="display:block;margin-top:12px;background:none;border:none;color:var(--accent-ink);padding:0;font-size:var(--fs-sm)">닫기</button>
     </div>
     <div id="popover-honesty" style="display:none;position:absolute;top:6px;right:16px;width:340px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:var(--sp-4);font-size:var(--fs-sm);color:var(--ink-soft)">

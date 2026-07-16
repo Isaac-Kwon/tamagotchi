@@ -565,14 +565,20 @@ def test_get_config(client):
     assert r.status_code == 200
     body = r.json()
     assert set(body) == {
-        "heartbeat_minutes", "mode", "model",
-        "sse_check_ms", "skill_auto_disable_failures",
+        "llm", "agent", "chat", "sandbox", "skills",
+        "web_actions", "knowledge", "observer_requests", "report", "web",
     }
-    assert body["mode"] in ("heartbeat", "continuous")
-    assert body["skill_auto_disable_failures"] == 3
-    # Secrets must never leak through this display endpoint.
-    assert "api_key" not in body
-    assert "allowed_networks" not in body
+    # A few representative values across sections.
+    assert body["agent"]["mode"] in ("heartbeat", "continuous")
+    assert body["agent"]["heartbeat_minutes"] == 30
+    assert body["skills"]["auto_disable_after_failures"] == 3
+    # Secrets and deployment internals must never leak through this endpoint.
+    assert "api_key" not in body["llm"]
+    assert "api_key_env" not in body["llm"]
+    assert "host" not in body["web"]
+    assert "port" not in body["web"]
+    assert "allowed_networks" not in body["web"]
+    assert "data_dir" not in body["agent"]
 
 
 def test_get_skills_empty(client):

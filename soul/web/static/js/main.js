@@ -135,21 +135,121 @@ function initPopovers() {
   document.getElementById("honesty-close")?.addEventListener("click", () => show(hon, false));
 }
 
+// 켬/끔 for booleans; passthrough for everything else (values are pre-formatted).
+function cfgBool(v) { return v ? "켬" : "끔"; }
+
+// Build the [title, rows] spec for every config section from the grouped
+// /api/config payload. Each row is [koLabel, valueString]. Sections are
+// rendered in this array order.
+function configSections(c) {
+  const g = (name) => c[name] || {};
+  const llm = g("llm");
+  const agent = g("agent");
+  const chat = g("chat");
+  const sandbox = g("sandbox");
+  const skills = g("skills");
+  const webAct = g("web_actions");
+  const know = g("knowledge");
+  const obs = g("observer_requests");
+  const report = g("report");
+  const web = g("web");
+  const modeKo = agent.mode === "continuous" ? "연속" : agent.mode === "heartbeat" ? "하트비트" : (agent.mode || "—");
+  const autosave = agent.autosave_every_steps === 0 ? "끔" : `${agent.autosave_every_steps}스텝마다`;
+  return [
+    ["LLM", [
+      ["모델", llm.model || "—"],
+      ["엔드포인트", llm.base_url || "—"],
+      ["온도", String(llm.temperature)],
+      ["최대 출력 토큰", String(llm.max_output_tokens)],
+      ["요청 타임아웃", `${llm.timeout_seconds}초`],
+      ["재시도", `${llm.max_retries}회`],
+      ["목업 모드", cfgBool(llm.mock)],
+    ]],
+    ["에이전트", [
+      ["모드", modeKo],
+      ["깨어남 주기", `${agent.heartbeat_minutes}분`],
+      ["최소 스텝 간격", `${agent.min_step_gap_seconds}초`],
+      ["스텝 타임아웃", `${agent.step_timeout_minutes}분`],
+      ["컨텍스트 최근 스텝", `${agent.context_recent_steps}스텝`],
+      ["세렌디피티", String(agent.serendipity_rate)],
+      ["SOUL.md 최대", `${agent.soul_max_chars}자`],
+      ["자동 저장", autosave],
+      ["에러 백오프", `${agent.consecutive_error_backoff}스텝`],
+    ]],
+    ["대화", [
+      ["기록 기본값", chat.record_default ? "허용" : "비공개"],
+      ["유휴 종료", `${chat.idle_end_seconds}초`],
+      ["선점 최대 대기", `${chat.preempt_max_wait_minutes}분`],
+    ]],
+    ["샌드박스", [
+      ["사용", cfgBool(sandbox.enabled)],
+      ["백엔드", sandbox.backend || "—"],
+      ["타임아웃", `${sandbox.timeout_seconds}초`],
+    ]],
+    ["스킬", [
+      ["사용", cfgBool(skills.enabled)],
+      ["자동 비활성", `연속 실패 ${skills.auto_disable_after_failures}회`],
+      ["타임아웃", `${skills.timeout_seconds}초`],
+    ]],
+    ["웹 행동", [
+      ["사용", cfgBool(webAct.enabled)],
+      ["HTTP 타임아웃", `${webAct.http_timeout_seconds}초`],
+      ["페이지 최대", `${webAct.max_page_kb} KB`],
+    ]],
+    ["지식", [
+      ["도구 라운드 최대", `${know.max_tool_rounds}회`],
+      ["검색 스니펫", `${know.fts_snippet_len}자`],
+    ]],
+    ["관찰자 요청", [
+      ["사용", cfgBool(obs.enabled)],
+      ["최대 열림", `${obs.max_open}건`],
+      ["첨부 최대", `${obs.max_attachment_mb} MB`],
+    ]],
+    ["일일 리포트", [
+      ["생성 시각", report.time || "—"],
+      ["시간대", report.timezone || "—"],
+      ["언어", report.language || "—"],
+    ]],
+    ["웹 서버", [
+      ["전송 모드", "SSE · 폴백 5초"],
+      ["SSE 체크 주기", `${web.sse_check_ms} ms`],
+    ]],
+  ];
+}
+
 // Fill the read-only settings popover from /api/config; never crash on failure.
 async function loadConfig() {
-  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-  // 전송/기록 정책은 config가 정하는 값이 아니라 정책 문구 — 실패해도 그대로 표시.
-  set("cfg-transport", "SSE · 폴백 5초");
-  set("cfg-record", "대화 토글 따름");
+  const body = document.getElementById("config-body");
+  if (!body) return;
+  body.textContent = "";
+  let c;
   try {
-    const c = await api.getConfig();
-    set("cfg-heartbeat", `${c.heartbeat_minutes}분`);
-    set("cfg-model", c.model || "—");
-    set("cfg-skill", `연속 실패 ${c.skill_auto_disable_failures}회`);
+    c = await api.getConfig();
   } catch (_e) {
-    set("cfg-heartbeat", "—");
-    set("cfg-model", "—");
-    set("cfg-skill", "—");
+    const err = document.createElement("div");
+    err.style.cssText = "color:var(--ink-faint);font-size:var(--fs-sm)";
+    err.textContent = "설정을 불러오지 못했습니다.";
+    body.appendChild(err);
+    return;
+  }
+  for (const [title, rows] of configSections(c)) {
+    const head = document.createElement("div");
+    head.style.cssText = "font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--ink-faint);margin-top:14px;margin-bottom:6px";
+    head.textContent = title;
+    body.appendChild(head);
+    const grid = document.createElement("div");
+    grid.style.cssText = "display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:var(--fs-sm)";
+    for (const [label, value] of rows) {
+      const l = document.createElement("span");
+      l.style.color = "var(--ink-soft)";
+      l.textContent = label;
+      const v = document.createElement("span");
+      v.style.cssText = "font-family:var(--mono);color:var(--ink);text-align:right";
+      v.textContent = value;
+      grid.appendChild(l);
+      grid.appendChild(v);
+    }
+    body.appendChild(grid);
   }
 }
 

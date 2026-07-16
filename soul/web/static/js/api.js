@@ -292,7 +292,18 @@ async function mockFetch(path, opts) {
   if (p === "/api/stats") return mockStats();
   if (p === "/api/skills") return { skills: MOCK_SKILLS, auto_disable_after_failures: 3 };
   if (p === "/api/config") {
-    return { heartbeat_minutes: 30, mode: "heartbeat", model: "gpt-4o-mini", sse_check_ms: 1000, skill_auto_disable_failures: 3 };
+    return {
+      llm: { model: "gpt-4o-mini", base_url: "https://api.openai.com/v1", temperature: 1.0, max_output_tokens: 2000, timeout_seconds: 120, max_retries: 3, mock: true },
+      agent: { mode: "heartbeat", heartbeat_minutes: 30, min_step_gap_seconds: 60, step_timeout_minutes: 45, context_recent_steps: 10, serendipity_rate: 0.3, soul_max_chars: 8000, autosave_every_steps: 20, consecutive_error_backoff: 5 },
+      chat: { record_default: false, idle_end_seconds: 180, preempt_max_wait_minutes: 30 },
+      sandbox: { enabled: true, backend: "auto", timeout_seconds: 10 },
+      skills: { enabled: true, timeout_seconds: 20, auto_disable_after_failures: 3 },
+      web_actions: { enabled: true, http_timeout_seconds: 20, max_page_kb: 500 },
+      knowledge: { max_tool_rounds: 5, fts_snippet_len: 200 },
+      observer_requests: { enabled: true, max_open: 5, max_attachment_mb: 20 },
+      report: { time: "22:00", timezone: "Asia/Seoul", language: "ko" },
+      web: { sse_check_ms: 1000 },
+    };
   }
   if (p === "/api/wiki/pages") return { pages: MOCK_WIKI_PAGES };
   if (p === "/api/wiki/search") {
