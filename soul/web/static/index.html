@@ -4,499 +4,135 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>영혼 다마고치</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <script src="https://cdn.jsdelivr.net/npm/phaser@3.70.0/dist/phaser.min.js"></script>
 <style>
-  :root {
-    color-scheme: light;
-    --bg: #efe7d8;
-    --panel-bg: #fffdf8;
-    --panel-border: #d8cbb0;
-    --ink: #2b2620;
-    --muted: #7a7160;
-    --accent: #6c8ebf;
-    --accent-warn: #b23b3b;
-  }
-
-  * { box-sizing: border-box; }
-
-  body {
-    margin: 0;
-    font-family: "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", sans-serif;
-    background: var(--bg);
-    color: var(--ink);
-  }
-
-  header.banner {
-    background: #3a3226;
-    color: #f3ead9;
-    padding: 8px 16px;
-    font-size: 13px;
-    text-align: center;
-    letter-spacing: 0.02em;
-  }
-
-  .top-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 16px;
-    background: var(--panel-bg);
-    border-bottom: 1px solid var(--panel-border);
-    font-size: 13px;
-    color: var(--muted);
-    gap: 12px;
-    flex-wrap: wrap;
-  }
-
-  #status-bar { flex: 1; min-width: 200px; }
-  #conn-status { white-space: nowrap; }
-
-  .layout {
-    display: flex;
-    height: calc(100vh - 88px);
-    min-height: 480px;
-  }
-
-  #game-container {
-    flex: 0 0 auto;
-    display: flex;
-    align-items: flex-start;
-    justify-content: center;
-    padding: 12px;
-    overflow: auto;
-    background: var(--bg);
-  }
-
-  #panels-root {
-    flex: 1 1 auto;
-    display: flex;
-    flex-direction: column;
-    min-width: 320px;
-    border-left: 1px solid var(--panel-border);
-    background: var(--panel-bg);
-    overflow: hidden;
-  }
-
-  .panel-tabs {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 2px;
-    padding: 6px 6px 0 6px;
-    border-bottom: 1px solid var(--panel-border);
-    background: #f6f0e2;
-  }
-
-  .panel-tab {
-    border: 1px solid transparent;
-    border-bottom: none;
-    background: transparent;
-    padding: 6px 10px;
-    font-size: 12.5px;
-    cursor: pointer;
-    border-radius: 6px 6px 0 0;
-    color: var(--muted);
-  }
-  .panel-tab.active {
-    background: var(--panel-bg);
-    border-color: var(--panel-border);
-    color: var(--ink);
-    font-weight: 600;
-  }
-
-  .panel-content {
-    flex: 1;
-    overflow-y: auto;
-    padding: 14px 16px;
-  }
-
-  .panel-section { display: none; }
-  .panel-section.active { display: block; }
-
-  .panel-section h3 { margin: 14px 0 6px; font-size: 14px; }
-  .panel-section h3:first-child { margin-top: 0; }
-  .panel-section h4 { margin: 10px 0 4px; font-size: 13px; }
-
-  .panel-note {
-    font-size: 12.5px;
-    color: var(--muted);
-    background: #f6f0e2;
-    border: 1px solid var(--panel-border);
-    border-radius: 6px;
-    padding: 8px 10px;
-    margin: 6px 0;
-  }
-
-  .panel-empty {
-    font-size: 12.5px;
-    color: var(--muted);
-    font-style: italic;
-    padding: 8px 0;
-  }
-
-  pre {
-    white-space: pre-wrap;
-    word-break: break-word;
-    font-family: "Consolas", "Menlo", monospace;
-    font-size: 12px;
-    background: #faf6ec;
-    border: 1px solid var(--panel-border);
-    border-radius: 6px;
-    padding: 10px;
-    max-height: 320px;
-    overflow-y: auto;
-  }
-
-  .soul-history { display: flex; flex-direction: column; gap: 4px; }
-  .soul-commit {
-    display: flex;
-    justify-content: space-between;
-    gap: 8px;
-    font-size: 12px;
-    padding: 5px 8px;
-    border: 1px solid var(--panel-border);
-    border-radius: 5px;
-    cursor: pointer;
-    background: #fff;
-  }
-  .soul-commit:hover { background: #f0ead9; }
-  .soul-commit-msg { flex: 1; }
-  .soul-commit-ts { color: var(--muted); white-space: nowrap; }
-
-  .sub-tabs { display: flex; gap: 6px; margin: 8px 0; }
-  .sub-tab {
-    border: 1px solid var(--panel-border);
-    background: #fff;
-    padding: 4px 10px;
-    font-size: 12px;
-    border-radius: 5px;
-    cursor: pointer;
-  }
-  .sub-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-
-  .step-meta { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--muted); }
-
-  .transcript-entry {
-    border: 1px solid var(--panel-border);
-    border-radius: 6px;
-    margin-bottom: 8px;
-    overflow: hidden;
-  }
-  .transcript-role {
-    background: #f0ead9;
-    font-size: 11px;
-    font-weight: 600;
-    padding: 3px 8px;
-    color: var(--muted);
-  }
-  .transcript-content { margin: 0; border: none; border-radius: 0; max-height: 200px; }
-
-  .wiki-search-row { display: flex; gap: 6px; margin-bottom: 8px; }
-  .wiki-search-input { flex: 1; padding: 5px 8px; border: 1px solid var(--panel-border); border-radius: 5px; }
-  .wiki-results { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
-  .wiki-result-row {
-    display: flex;
-    flex-direction: column;
-    border: 1px solid var(--panel-border);
-    border-radius: 5px;
-    padding: 6px 8px;
-    cursor: pointer;
-    background: #fff;
-    font-size: 12.5px;
-  }
-  .wiki-result-row:hover { background: #f0ead9; }
-  .wiki-result-title { font-weight: 600; }
-  .wiki-result-snippet { color: var(--muted); font-size: 11.5px; }
-  .wiki-graph-toggle {
-    border: 1px solid var(--panel-border);
-    background: #fff;
-    padding: 5px 10px;
-    border-radius: 5px;
-    cursor: pointer;
-    font-size: 12px;
-    margin-bottom: 8px;
-  }
-  .wiki-graph-canvas { border: 1px solid var(--panel-border); border-radius: 6px; background: #fff; margin-bottom: 10px; max-width: 100%; }
-  .wiki-page-content { max-height: 260px; }
-  .wiki-backlinks-label { font-size: 12px; color: var(--muted); margin-top: 6px; }
-  .wiki-backlinks { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
-  .wiki-backlink {
-    background: #eef2fa;
-    color: var(--accent);
-    padding: 2px 8px;
-    border-radius: 10px;
-    font-size: 11.5px;
-    cursor: pointer;
-  }
-
-  .report-list { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
-  .report-row {
-    border: 1px solid var(--panel-border);
-    background: #fff;
-    padding: 5px 10px;
-    border-radius: 5px;
-    cursor: pointer;
-    font-size: 12.5px;
-  }
-  .report-row:hover { background: #f0ead9; }
-
-  .chat-record-toggle { display: flex; align-items: center; gap: 6px; font-size: 13px; margin-top: 4px; }
-  .chat-record-hint { font-size: 11.5px; color: var(--muted); margin: 4px 0 10px; }
-  .chat-log {
-    height: 220px;
-    overflow-y: auto;
-    border: 1px solid var(--panel-border);
-    border-radius: 6px;
-    background: #fff;
-    padding: 8px;
-    font-size: 13px;
-    margin-bottom: 8px;
-  }
-  .chat-line { margin-bottom: 6px; }
-  .chat-line-me { color: var(--ink); }
-  .chat-line-them { color: var(--accent); }
-  .chat-input-row { display: flex; gap: 6px; }
-  .chat-input { flex: 1; padding: 6px 8px; border: 1px solid var(--panel-border); border-radius: 5px; }
-  .chat-end-btn { background: #f6e0e0; }
-
-  .inbox-content, .inbox-url {
-    width: 100%;
-    padding: 6px 8px;
-    border: 1px solid var(--panel-border);
-    border-radius: 5px;
-    margin: 6px 0;
-    font-family: inherit;
-  }
-
-  .outbox-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
-  .outbox-controls select { margin-bottom: 0; }
-  .outbox-list { display: flex; flex-direction: column; gap: 8px; }
-  .outbox-row {
-    border: 1px solid var(--panel-border);
-    border-radius: 6px;
-    background: #fff;
-    padding: 8px 10px;
-    font-size: 12.5px;
-  }
-  .outbox-row-head { display: flex; align-items: flex-start; gap: 8px; }
-  .outbox-text { flex: 1; word-break: break-word; }
-  .outbox-meta { font-size: 11.5px; color: var(--muted); margin-top: 4px; }
-  .outbox-status {
-    padding: 2px 8px;
-    border-radius: 10px;
-    font-size: 11px;
-    font-weight: 600;
-    white-space: nowrap;
-  }
-  .outbox-status-open { background: #eef2fa; color: var(--accent); }
-  .outbox-status-resolved { background: #e5f2e5; color: #3c7a3c; }
-  .outbox-status-declined { background: #f6e0e0; color: var(--accent-warn); }
-  .outbox-status-ignored { background: #ece7db; color: var(--muted); }
-  .outbox-resolve-form { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
-  .outbox-note-input {
-    width: 100%;
-    padding: 6px 8px;
-    border: 1px solid var(--panel-border);
-    border-radius: 5px;
-    font-family: inherit;
-    font-size: 12.5px;
-  }
-  .outbox-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-  .outbox-actions button { padding: 5px 10px; }
-  .outbox-btn-decline { background: #f6e0e0; color: var(--accent-warn); }
-  .outbox-btn-ignore, .outbox-btn-attach { background: #fff; color: var(--muted); }
-  .outbox-file-input { font-size: 11.5px; }
-  .outbox-detail { margin-top: 6px; font-size: 12px; }
-  .outbox-attachment { margin-top: 4px; font-size: 11.5px; color: var(--accent); word-break: break-all; }
-  .outbox-row-status { font-size: 11.5px; color: var(--muted); }
-
-  .revealed-note {
-    font-size: 12.5px;
-    background: #f6f0e2;
-    border: 1px solid var(--panel-border);
-    border-radius: 6px;
-    padding: 8px 10px;
-    margin-bottom: 8px;
-  }
-  .revealed-thread {
-    display: flex;
-    gap: 12px;
-    font-size: 12.5px;
-    padding: 6px 8px;
-    border-bottom: 1px solid var(--panel-border);
-  }
-  .revealed-thread-topic { flex: 1; font-weight: 600; }
-
-  /* ---- 통계 패널 (stats) ---- */
-  :root {
-    --viz-bar: #4a7dbf;      /* single-hue magnitude bars */
-    --viz-pos: #4a7dbf;      /* mood valence: positive */
-    --viz-neu: #b08a3e;      /* mood valence: neutral  */
-    --viz-neg: #b23b3b;      /* mood valence: negative */
-  }
-  .stat-tiles { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
-  .stat-tile {
-    flex: 1 1 90px;
-    border: 1px solid var(--panel-border);
-    border-radius: 6px;
-    background: #fff;
-    padding: 8px 10px;
-    text-align: center;
-  }
-  .stat-tile-num { font-size: 20px; font-weight: 700; }
-  .stat-tile-label { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
-
-  .rhythm-strip {
-    display: flex;
-    align-items: flex-end;
-    gap: 2px;
-    height: 96px;
-    padding: 6px 8px 0 8px;
-    border: 1px solid var(--panel-border);
-    border-radius: 6px;
-    background: #fff;
-    overflow-x: auto;
-  }
-  .rhythm-bar {
-    flex: 0 0 5px;
-    border-radius: 2px 2px 0 0;
-    cursor: pointer;
-    min-height: 3px;
-  }
-  .rhythm-bar:hover { filter: brightness(1.25); }
-  .rhythm-legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 11.5px; color: var(--muted); margin: 6px 0 2px; }
-  .legend-swatch {
-    display: inline-block;
-    width: 9px; height: 9px;
-    border-radius: 2px;
-    margin-right: 4px;
-    vertical-align: baseline;
-  }
-
-  .hbar-list { display: flex; flex-direction: column; gap: 5px; margin: 4px 0 8px; }
-  .hbar-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
-  .hbar-label { flex: 0 0 150px; text-align: right; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .hbar-track { flex: 1; background: #f6f0e2; border-radius: 4px; height: 12px; overflow: hidden; }
-  .hbar-fill { background: var(--viz-bar); height: 100%; border-radius: 0 4px 4px 0; min-width: 2px; }
-  .hbar-value { flex: 0 0 80px; color: var(--muted); font-size: 11.5px; }
-
-  .hist { display: flex; align-items: flex-end; gap: 4px; height: 90px; padding: 4px 2px 0; }
-  .hist-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
-  .hist-count { font-size: 10.5px; color: var(--muted); margin-bottom: 2px; }
-  .hist-bar { width: 70%; max-width: 26px; background: var(--viz-bar); border-radius: 3px 3px 0 0; }
-  .hist-ticks { display: flex; gap: 4px; border-top: 1px solid var(--panel-border); margin-top: 2px; padding-top: 2px; }
-  .hist-tick { flex: 1; text-align: center; font-size: 10.5px; color: var(--muted); }
-
-  .thread-list { display: flex; flex-direction: column; gap: 6px; }
-  .thread-row {
-    border: 1px solid var(--panel-border);
-    border-radius: 6px;
-    background: #fff;
-    padding: 6px 8px;
-    font-size: 12px;
-  }
-  .thread-topic { font-weight: 600; margin-bottom: 3px; word-break: break-word; }
-  .thread-track { background: #f6f0e2; border-radius: 4px; height: 10px; overflow: hidden; margin-bottom: 3px; }
-  .thread-fill { background: var(--viz-bar); height: 100%; border-radius: 0 4px 4px 0; min-width: 3px; }
-  .thread-meta { color: var(--muted); font-size: 11px; }
-
-  .error-list { display: flex; flex-direction: column; gap: 5px; }
-  .error-row {
-    border: 1px solid #e4c2c2;
-    border-radius: 6px;
-    background: #fbf1f1;
-    padding: 6px 8px;
-    font-size: 12px;
-    cursor: pointer;
-  }
-  .error-row:hover { background: #f6e3e3; }
-  .error-row-head { display: flex; gap: 8px; color: var(--accent-warn); font-weight: 600; }
-  .error-row-ts { margin-left: auto; color: var(--muted); font-weight: 400; }
-  .error-row-msg { color: var(--ink); margin-top: 2px; word-break: break-word; }
-
-  /* ---- 스킬 패널 ---- */
-  .skill-list { display: flex; flex-direction: column; gap: 8px; }
-  .skill-card {
-    border: 1px solid var(--panel-border);
-    border-radius: 6px;
-    background: #fff;
-    padding: 8px 10px;
-    font-size: 12.5px;
-  }
-  .skill-card.skill-disabled { background: #f3efe6; color: var(--muted); }
-  .skill-head { display: flex; align-items: center; gap: 8px; }
-  .skill-name { font-weight: 700; font-family: "Consolas", "Menlo", monospace; }
-  .skill-badge {
-    padding: 2px 8px;
-    border-radius: 10px;
-    font-size: 11px;
-    font-weight: 600;
-    margin-left: auto;
-  }
-  .skill-badge-on { background: #e5f2e5; color: #3c7a3c; }
-  .skill-badge-off { background: #f6e0e0; color: var(--accent-warn); }
-  .skill-desc { margin: 4px 0; }
-  .skill-meta { font-size: 11.5px; color: var(--muted); }
-  .skill-fail-warn { color: var(--accent-warn); font-weight: 600; }
-
-  .journal-error-chip {
-    background: #f6e0e0;
-    color: var(--accent-warn);
-    padding: 0 6px;
-    border-radius: 8px;
-    font-size: 10.5px;
-    font-weight: 600;
-  }
-  .step-error-note {
-    color: var(--accent-warn);
-    font-size: 12px;
-    margin-top: 4px;
-  }
-
-  .journal-list { display: flex; flex-direction: column; gap: 2px; }
-  .journal-row {
-    display: flex;
-    gap: 10px;
-    font-size: 12px;
-    padding: 4px 6px;
-    border-bottom: 1px solid var(--panel-border);
-    cursor: pointer;
-  }
-  .journal-row:hover { background: #f0ead9; }
-  .journal-id { color: var(--muted); font-family: monospace; }
-  .journal-ts { margin-left: auto; color: var(--muted); }
-
-  button {
-    font-family: inherit;
-    border: 1px solid var(--panel-border);
-    background: var(--accent);
-    color: #fff;
-    padding: 6px 12px;
-    border-radius: 5px;
-    cursor: pointer;
-    font-size: 12.5px;
-  }
-  button:hover { filter: brightness(1.05); }
-
-  select { padding: 5px; border-radius: 5px; border: 1px solid var(--panel-border); margin-bottom: 6px; }
-
-  @media (max-width: 860px) {
-    .layout { flex-direction: column; height: auto; }
-    #game-container { justify-content: flex-start; }
-    #panels-root { border-left: none; border-top: 1px solid var(--panel-border); min-height: 420px; }
-  }
+.soul-app{
+  /* ===== 디자인 토큰 (라이트) ===== */
+  --bg:#eae3d3; --bg-deep:#e0d6c1; --panel:#fbf8f0; --panel-2:#f2ecdd; --panel-3:#eee7d5;
+  --ink:#2d271d; --ink-soft:#6f6653; --ink-faint:#9a8f77; --line:#d9cfb8; --line-soft:#e6ddc9;
+  --accent:oklch(0.55 0.07 145); --accent-ink:oklch(0.38 0.07 145); --accent-soft:oklch(0.93 0.03 145);
+  --warn:oklch(0.55 0.09 60); --warn-soft:oklch(0.93 0.04 80);
+  /* 결정 4종 — 동일 명도/채도, 색상만 다름 (서열 없음) */
+  --d-deepen:oklch(0.62 0.09 230); --d-new:oklch(0.62 0.09 130); --d-shelve:oklch(0.62 0.09 310); --d-abandon:oklch(0.62 0.09 30);
+  --d-deepen-soft:oklch(0.93 0.03 230); --d-new-soft:oklch(0.93 0.03 130); --d-shelve-soft:oklch(0.93 0.03 310); --d-abandon-soft:oklch(0.93 0.03 30);
+  /* 기분 8종 — 동일 채도 */
+  --m-calm:oklch(0.75 0.07 200); --m-curious:oklch(0.75 0.07 140); --m-excited:oklch(0.75 0.07 60); --m-serene:oklch(0.75 0.07 230);
+  --m-bored:oklch(0.75 0.04 90); --m-frustrated:oklch(0.72 0.07 25); --m-tired:oklch(0.72 0.05 290); --m-proud:oklch(0.75 0.07 110);
+  --radius:12px; --radius-sm:8px; --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px;
+  --fs-xs:11.5px; --fs-sm:13px; --fs-md:14.5px; --fs-lg:17px; --fs-xl:22px;
+  --mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+  --shadow:0 1px 2px rgba(60,50,30,.06),0 4px 14px rgba(60,50,30,.07);
+}
+.soul-app[data-theme="dark"]{
+  --bg:#211c13; --bg-deep:#1a1610; --panel:#2b2519; --panel-2:#322b1e; --panel-3:#382f21;
+  --ink:#ece3cf; --ink-soft:#b0a488; --ink-faint:#847a62; --line:#463c28; --line-soft:#3a3222;
+  --accent:oklch(0.72 0.08 145); --accent-ink:oklch(0.8 0.08 145); --accent-soft:oklch(0.32 0.04 145);
+  --warn:oklch(0.72 0.1 60); --warn-soft:oklch(0.32 0.05 80);
+  --d-deepen:oklch(0.7 0.09 230); --d-new:oklch(0.7 0.09 130); --d-shelve:oklch(0.7 0.09 310); --d-abandon:oklch(0.7 0.09 30);
+  --d-deepen-soft:oklch(0.32 0.04 230); --d-new-soft:oklch(0.32 0.04 130); --d-shelve-soft:oklch(0.32 0.04 310); --d-abandon-soft:oklch(0.32 0.04 30);
+  --shadow:0 1px 2px rgba(0,0,0,.25),0 4px 14px rgba(0,0,0,.25);
+}
+html,body{margin:0;padding:0}
+.soul-app a{color:var(--accent-ink);text-decoration:none}
+.soul-app a:hover{color:var(--accent);text-decoration:underline}
+.soul-app{word-break:keep-all}
+.soul-app button{font-family:inherit;cursor:pointer;white-space:nowrap}
+.soul-app .chip{white-space:nowrap}
+.soul-app ::-webkit-scrollbar{width:10px;height:10px}
+.soul-app ::-webkit-scrollbar-thumb{background:var(--line);border-radius:6px;border:2px solid transparent;background-clip:content-box}
+@keyframes soulPulse{0%,100%{opacity:1}50%{opacity:.35}}
+@keyframes soulBlink{0%,100%{opacity:.9}50%{opacity:.5}}
+/* Panel-column chrome. panels.js styles its own interior with inline tokens /
+   an injected stylesheet; it only relies on this class + .chip + the tokens. */
+.panel-col{background:var(--panel);border:1px solid var(--line-soft);border-radius:var(--radius);box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden;min-width:0;min-height:0}
+/* Phaser canvas fills the aspect-ratio room box (main.js sets Scale.FIT). */
+#game-container{position:absolute;inset:0}
+#game-container canvas{width:100%!important;height:100%!important;image-rendering:pixelated}
+@media (max-width:1180px){
+  .honesty-text{display:none !important}
+}
+@media (max-width:860px){
+  .layout-main{display:flex !important;flex-direction:column !important;height:auto !important;overflow:visible !important}
+  .room-col{max-width:none !important}
+  .panel-col{min-height:70vh}
+  .topbar-thread{display:none !important}
+}
 </style>
 </head>
 <body>
-  <header class="banner">이 존재는 자기주도적 흥미를 시뮬레이션합니다</header>
-  <div class="top-bar">
-    <div id="status-bar">상태를 불러오는 중…</div>
-    <div id="conn-status">연결 중…</div>
-  </div>
-  <div class="layout">
-    <div id="game-container"></div>
-    <div id="panels-root"></div>
+<div class="soul-app" id="soul-app" data-theme="light" style="min-height:100vh;background:var(--bg);color:var(--ink);font-family:'Pretendard Variable',Pretendard,system-ui,sans-serif;font-size:var(--fs-md);line-height:1.55;display:flex;flex-direction:column">
+
+  <!-- ===== 상단 바 (main.js fills the dynamic parts by id) ===== -->
+  <header style="display:flex;align-items:center;gap:var(--sp-3);padding:10px var(--sp-4);min-height:54px;background:var(--panel);border-bottom:1px solid var(--line);flex-shrink:0;box-sizing:border-box;min-width:0">
+    <div style="display:flex;align-items:center;gap:var(--sp-2);flex-shrink:0">
+      <div style="width:26px;height:26px;border-radius:8px;background:var(--accent-soft);border:1px solid var(--line);display:grid;place-items:center;font-size:13px">◕</div>
+      <strong class="chip" style="font-size:var(--fs-lg);letter-spacing:-.01em">영혼 다마고치</strong>
+      <span class="chip" style="font-family:var(--mono);font-size:var(--fs-xs);color:var(--ink-faint)">soul-01</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:var(--sp-2);font-size:var(--fs-sm);min-width:0;flex:1;overflow:hidden">
+      <span id="status-chip" class="chip" style="display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;background:var(--accent-soft);color:var(--accent-ink);border:1px solid var(--line-soft);flex-shrink:0">
+        <span id="status-dot" style="width:7px;height:7px;border-radius:50%;background:currentColor;animation:soulPulse 2.2s infinite"></span><span id="status-label">상태 불러오는 중</span>
+      </span>
+      <span id="topbar-thread" class="topbar-thread" style="color:var(--ink-soft);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+      <span id="next-wake" class="chip" style="color:var(--ink-soft);flex-shrink:0"></span>
+    </div>
+    <div style="display:flex;align-items:center;gap:var(--sp-3);flex-shrink:0">
+      <button id="btn-config" title="설정 보기" style="display:inline-flex;align-items:center;gap:6px;background:none;border:1px solid var(--line-soft);border-radius:999px;padding:3px 10px;color:var(--ink-soft);font-size:var(--fs-xs)">⚙ 설정</button>
+      <button id="btn-honesty" title="이 존재는 자기주도적 흥미를 시뮬레이션합니다 — 자세히 보기" style="display:inline-flex;align-items:center;gap:6px;background:none;border:none;padding:4px 2px;color:var(--ink-soft);font-size:var(--fs-xs)">
+        <span style="width:15px;height:15px;border-radius:50%;border:1px solid var(--ink-faint);display:inline-grid;place-items:center;font-size:10px;font-style:italic;font-family:Georgia,serif;flex-shrink:0">i</span>
+        <span class="honesty-text">이 존재는 자기주도적 흥미를 시뮬레이션합니다</span>
+      </button>
+      <span id="conn-chip" class="chip" style="display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:var(--fs-xs);color:var(--ink-faint);padding:3px 8px;border:1px solid var(--line-soft);border-radius:999px"><span id="conn-dot" style="width:7px;height:7px;border-radius:50%;background:oklch(0.65 0.15 145);flex-shrink:0"></span><span id="conn-label">연결 중…</span></span>
+      <button id="btn-theme" title="테마 전환" style="width:30px;height:30px;border-radius:8px;border:1px solid var(--line);background:var(--panel-2);color:var(--ink-soft);font-size:13px;flex-shrink:0">☾</button>
+    </div>
+  </header>
+
+  <!-- ===== 팝오버 (설정 / 정직한 프레이밍) — 기본 숨김, main.js가 토글 ===== -->
+  <div style="position:relative;z-index:20">
+    <div id="popover-config" style="display:none;position:absolute;top:6px;right:16px;width:320px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:var(--sp-4);font-size:var(--fs-sm)">
+      <strong style="display:block;margin-bottom:10px">설정 (읽기 전용)</strong>
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:var(--fs-sm);color:var(--ink-soft)">
+        <span>깨어남 주기</span><span id="cfg-heartbeat" style="font-family:var(--mono);color:var(--ink);text-align:right">—</span>
+        <span>모델</span><span id="cfg-model" style="font-family:var(--mono);color:var(--ink);text-align:right">—</span>
+        <span>전송 모드</span><span id="cfg-transport" style="font-family:var(--mono);color:var(--ink);text-align:right">—</span>
+        <span>스킬 자동 비활성</span><span id="cfg-skill" style="font-family:var(--mono);color:var(--ink);text-align:right">—</span>
+        <span>기록 정책</span><span id="cfg-record" style="font-family:var(--mono);color:var(--ink);text-align:right">—</span>
+      </div>
+      <button id="config-close" style="display:block;margin-top:12px;background:none;border:none;color:var(--accent-ink);padding:0;font-size:var(--fs-sm)">닫기</button>
+    </div>
+    <div id="popover-honesty" style="display:none;position:absolute;top:6px;right:16px;width:340px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:var(--sp-4);font-size:var(--fs-sm);color:var(--ink-soft)">
+      <strong style="color:var(--ink);display:block;margin-bottom:6px">정직한 프레이밍에 대하여</strong>
+      이 에이전트에게 "진짜 영혼"이 있는 것은 아닙니다. 30분마다 스스로 행동을 고르고, 흥미를 평가하고, 주제를 이어가거나 놓아주는 <em>자기주도적 흥미의 시뮬레이션</em>입니다. 이 창은 그 누적을 관찰하기 위한 것입니다.
+      <button id="honesty-close" style="display:block;margin-top:10px;background:none;border:none;color:var(--accent-ink);padding:0;font-size:var(--fs-sm)">닫기</button>
+    </div>
   </div>
 
-  <script type="module" src="./js/main.js"></script>
+  <!-- ===== 본문 ===== -->
+  <div class="layout-main" style="display:grid;grid-template-columns:minmax(400px,46%) 1fr;gap:var(--sp-4);padding:var(--sp-4);flex:1;min-height:0;height:calc(100vh - 54px);overflow:hidden;box-sizing:border-box">
+
+    <!-- 방 컬럼 -->
+    <div class="room-col" style="display:flex;flex-direction:column;gap:var(--sp-3);min-width:0;overflow-y:auto">
+      <div style="position:relative;padding:12px;background:var(--panel);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow)">
+        <!-- aspect-ratio 960/600 inner box; Phaser mounts into #game-container and
+             fills it. main.js sets #room-inner filter:grayscale(...) when stale. -->
+        <div id="room-inner" style="position:relative;aspect-ratio:960/600;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:repeating-linear-gradient(45deg,var(--panel-2) 0 14px,var(--panel-3) 14px 28px)">
+          <div id="game-container"></div>
+        </div>
+        <div style="display:flex;justify-content:center;margin-top:8px">
+          <span style="font-family:var(--mono);font-size:10px;letter-spacing:.18em;color:var(--ink-faint);border:1px solid var(--line);border-radius:4px;padding:2px 10px;background:var(--panel)">TERRARIUM · SOUL-01</span>
+        </div>
+      </div>
+
+      <!-- 방 아래 상태 카드 — main.js render()가 last_step / stale로 채움 -->
+      <div id="status-card" style="background:var(--panel);border:1px solid var(--line-soft);border-radius:var(--radius);padding:var(--sp-4);box-shadow:var(--shadow)"></div>
+    </div>
+
+    <!-- 패널 컬럼 — panels.js가 탭바+11패널을 내부에 그림 -->
+    <div id="panels-root" class="panel-col"></div>
+  </div>
+</div>
+
+<script type="module" src="./js/main.js"></script>
 </body>
 </html>

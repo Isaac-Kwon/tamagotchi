@@ -74,17 +74,44 @@ function mockLastStep() {
   };
 }
 
+// state.last_step (loop.py) is a reduced projection of the journal record:
+// {id, action, topic, summary, mood, interest, decision, ts} — NO `reason`.
+function mockStateLastStep() {
+  const s = mockLastStep();
+  return { id: s.id, action: s.action, topic: s.topic, summary: s.summary, mood: s.mood, interest: s.interest, decision: s.decision, ts: s.ts };
+}
+
+// Real revealed_interest() shape (journal.py): top_threads items are
+// {thread_id, topic, steps, avg_interest, max_interest}; revisit counts live in
+// top-level shelve_returns / topic_recurrence dicts keyed by topic.
+function mockRevealed() {
+  return {
+    threads: [
+      { thread_id: "th-0006", topic: "셀룰러 오토마타 × 음악", steps: 12, avg_interest: 8.2, max_interest: 10 },
+      { thread_id: "th-0001", topic: "한국어 의성어 사전", steps: 5, avg_interest: 6.4, max_interest: 8 },
+      { thread_id: "th-0018", topic: "미로 알고리즘 비교", steps: 2, avg_interest: 5.0, max_interest: 6 },
+    ],
+    top_threads: [
+      { thread_id: "th-0006", topic: "셀룰러 오토마타 × 음악", steps: 12, avg_interest: 8.2, max_interest: 10 },
+      { thread_id: "th-0001", topic: "한국어 의성어 사전", steps: 5, avg_interest: 6.4, max_interest: 8 },
+      { thread_id: "th-0018", topic: "미로 알고리즘 비교", steps: 2, avg_interest: 5.0, max_interest: 6 },
+    ],
+    topic_recurrence: { "셀룰러 오토마타 × 음악": 3, "한국어 의성어 사전": 2 },
+    shelve_returns: { "한국어 의성어 사전": 1, "셀룰러 오토마타 × 음악": 2 },
+    total_shelve_returns: 3,
+    stated_avg_interest: 7.6,
+    stated_vs_revealed_note: "stated 흥미는 대체로 revealed보다 높게 나타납니다 (목업 데이터).",
+  };
+}
+
 function mockState() {
   return {
     status: "awake",
     stale: false,
-    last_step: mockLastStep(),
+    last_step: mockStateLastStep(),
     current_thread: { topic: "목업 스레드", steps: 3, interest_series: [4, 5, 7] },
     shelved_threads: [{ thread_id: "th-old", topic: "예전 관심사" }],
-    revealed: {
-      top_threads: [{ topic: "예전 관심사", revisits: 2, persistence_steps: 5 }],
-      stated_vs_revealed_note: "stated 흥미는 대체로 revealed보다 높게 나타납니다 (목업 데이터).",
-    },
+    revealed: mockRevealed(),
     next_wake_at: new Date(Date.now() + 5 * 60000).toISOString(),
     today_report: null,
     open_requests: 1,
@@ -201,10 +228,39 @@ async function mockFetch(path, opts) {
     return { steps: steps.reverse() };
   }
   if (p.startsWith("/api/step/") && p.endsWith("/transcript")) {
+    // Real shape (llm.py TranscriptRecorder.record): one entry PER LLM round-trip
+    // — {ts, backend, messages:[{role,content}...], tools, response, normalized,
+    // reasoning, error}. A wake step is typically two calls (ACT then REFLECT).
+    const t0 = new Date(Date.now() - 90000).toISOString();
+    const t1 = new Date(Date.now() - 60000).toISOString();
     return {
       entries: [
-        { role: "system", content: "(mock) system prompt excerpt" },
-        { role: "assistant", content: "(mock) reasoning/tool call excerpt" },
+        {
+          ts: t0,
+          backend: "llm",
+          messages: [
+            { role: "system", content: "(목업) ACT 시스템 프롬프트 — 블랭크 슬레이트." },
+            { role: "user", content: "(목업) 이번 스텝에 할 행동을 하나 골라 JSON 으로 답하세요." },
+          ],
+          tools: [{ type: "function", function: { name: "wiki_write" } }],
+          response: { id: "cmpl-mock-act", choices: [{ message: { role: "assistant", content: "{\"action\":\"code_experiment\"}" } }] },
+          normalized: { content: "{\"action\":\"code_experiment\",\"topic\":\"셀룰러 오토마타 × 음악\"}", model: "gpt-4o-mini", reasoning: null, tokens_in: 512, tokens_out: 48, latency_ms: 1200, tool_calls: null },
+          reasoning: null,
+          error: null,
+        },
+        {
+          ts: t1,
+          backend: "llm",
+          messages: [
+            { role: "system", content: "(목업) REFLECT 시스템 프롬프트 — reason 을 decision 보다 먼저." },
+            { role: "user", content: "(목업) 방금 한 행동을 돌아보고 흥미도와 결정을 JSON 으로 답하세요." },
+          ],
+          tools: null,
+          response: { id: "cmpl-mock-reflect", choices: [{ message: { role: "assistant", content: "{\"reason\":\"...\",\"decision\":\"deepen\"}" } }] },
+          normalized: { content: "{\"reason\":\"패턴이 소리가 되는 순간이 아직 질리지 않는다.\",\"interest\":8,\"decision\":\"deepen\"}", model: "gpt-4o-mini", reasoning: null, tokens_in: 640, tokens_out: 40, latency_ms: 980, tool_calls: null },
+          reasoning: null,
+          error: null,
+        },
       ],
     };
   }
