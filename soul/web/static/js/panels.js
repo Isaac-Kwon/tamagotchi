@@ -12,7 +12,7 @@
 // .chip 과 아래에서 1회 주입하는 `p-` 접두 hover 스타일뿐이다.
 
 import { MOOD_LABEL_KO } from "./mapping.js";
-import { renderMarkdown } from "./markdown.js";
+import { renderMarkdownWithToggle } from "./markdown.js";
 
 function el(tag, attrs, children) {
   const node = document.createElement(tag);
@@ -465,7 +465,7 @@ export function initPanels({ root, api, onChatStateChange }) {
           );
         }
         contentBody.innerHTML = "";
-        contentBody.appendChild(renderMarkdown((detail && detail.content) || "(산출물 내용 없음)"));
+        contentBody.appendChild(renderMarkdownWithToggle((detail && detail.content) || "(산출물 내용 없음)"));
       } catch (e) {
         contentBody.textContent = "스텝 상세를 불러오지 못했습니다: " + e.message;
       }
@@ -511,7 +511,7 @@ export function initPanels({ root, api, onChatStateChange }) {
         return;
       }
       soulBody.appendChild(
-        renderMarkdown(content, {
+        renderMarkdownWithToggle(content, {
           onWikiLink: (slug) => { activate("wiki"); openWikiPage(slug); },
         })
       );
@@ -923,7 +923,7 @@ export function initPanels({ root, api, onChatStateChange }) {
         const pg = await api.getWikiPage(slug);
         article.innerHTML = "";
         article.appendChild(el("h2", { style: "margin:0;font-size:var(--fs-xl)", text: pg.title || pg.slug }));
-        article.appendChild(renderMarkdown(pg.content || "", { onWikiLink: openWikiPage }));
+        article.appendChild(renderMarkdownWithToggle(pg.content || "", { onWikiLink: openWikiPage }));
         const backlinks = pg.backlinks || [];
         if (backlinks.length) {
           const row = el("div", { style: "display:flex;gap:6px;flex-wrap:wrap;font-size:var(--fs-xs);align-items:center" });
@@ -992,7 +992,7 @@ export function initPanels({ root, api, onChatStateChange }) {
         const rep = await api.getReport(date);
         article.innerHTML = "";
         article.appendChild(el("h2", { style: "margin:0;font-size:var(--fs-xl)", text: fmtReportDate(date) + "의 기록" }));
-        article.appendChild(renderMarkdown((rep && rep.content) || "(내용 없음)"));
+        article.appendChild(renderMarkdownWithToggle((rep && rep.content) || "(내용 없음)"));
       } catch (e) {
         article.innerHTML = "";
         article.appendChild(emptyNote("리포트를 불러오지 못했습니다: " + e.message));

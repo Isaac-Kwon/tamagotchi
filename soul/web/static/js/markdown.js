@@ -8,6 +8,7 @@
 // Supported: #–###### headings · paragraphs · **bold** · *italic* / _italic_ ·
 // `inline code` · ``` fenced code blocks (rendered as <pre>, no highlighting) ·
 // -/* unordered and 1. ordered lists · > blockquotes · --- horizontal rules ·
+// | pipe | tables (GFM: header row + `---`/`:---:` delimiter row required) ·
 // [label](url) links (http/https only; other schemes stay literal) ·
 // [[wiki-slug]] links (calls opts.onWikiLink(slug) when provided). Inline marks
 // nest one level (e.g. bold inside a list item). Presentation lives in the
@@ -28,7 +29,15 @@ const MD_CSS = `
 .p-md ul,.p-md ol{margin:0 0 10px;padding-left:20px}
 .p-md li{margin:2px 0}
 .p-md hr{border:none;border-top:1px solid var(--line-soft);margin:14px 0}
+.p-md .p-md-tablewrap{overflow-x:auto;margin:0 0 10px}
+.p-md table{border-collapse:collapse;font-size:var(--fs-sm)}
+.p-md th,.p-md td{border:1px solid var(--line-soft);padding:5px 10px;text-align:left;vertical-align:top}
+.p-md th{background:var(--panel-2);font-weight:600}
 .p-md > :last-child{margin-bottom:0}
+.p-md-shell::after{content:"";display:block;clear:both}
+.p-md-rawbtn{float:right;margin:0 0 8px 12px;font-size:var(--fs-xs);font-family:inherit;color:var(--ink-faint);background:var(--panel-2);border:1px solid var(--line-soft);border-radius:999px;padding:3px 10px;cursor:pointer}
+.p-md-rawbtn:hover{color:var(--ink-soft);border-color:var(--line)}
+.p-md-raw{margin:0;background:var(--panel-2);border:1px solid var(--line-soft);border-radius:var(--radius-sm);padding:14px;font-family:var(--mono);font-size:12.5px;overflow-x:auto;color:var(--ink-soft);white-space:pre-wrap;word-break:break-word}
 .p-md .p-wikilink{color:var(--accent-ink);cursor:pointer;text-decoration:none}
 .p-md .p-wikilink:hover{color:var(--accent);text-decoration:underline}
 `;
@@ -48,7 +57,47 @@ function isBlockStart(line) {
     || /^#{1,6}\s+/.test(line)
     || /^\s*>/.test(line)
     || /^\s*[-*]\s+/.test(line)
-    || /^\s*\d+\.\s+/.test(line);
+    || /^\s*\d+\.\s+/.test(line)
+    || /^\s*\|/.test(line);
+}
+
+// --- tables ------------------------------------------------------------------
+
+function isTableRow(line) {
+  return /^\s*\|.*\|\s*$/.test(line);
+}
+
+// GFM delimiter row: cells of `---`, `:---`, `---:`, `:---:` between pipes.
+function isTableSeparator(line) {
+  if (!isTableRow(line)) return false;
+  const cells = splitTableRow(line);
+  return cells.length > 0 && cells.every((c) => /^:?-+:?$/.test(c));
+}
+
+function splitTableRow(line) {
+  let s = line.trim();
+  if (s.startsWith("|")) s = s.slice(1);
+  if (s.endsWith("|")) s = s.slice(0, -1);
+  // Split on unescaped pipes; `\|` inside a cell stays a literal pipe.
+  const cells = [];
+  let buf = "";
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === "\\" && s[i + 1] === "|") { buf += "|"; i++; continue; }
+    if (s[i] === "|") { cells.push(buf.trim()); buf = ""; continue; }
+    buf += s[i];
+  }
+  cells.push(buf.trim());
+  return cells;
+}
+
+function tableAligns(sepLine) {
+  return splitTableRow(sepLine).map((c) => {
+    const left = c.startsWith(":");
+    const right = c.endsWith(":");
+    if (left && right) return "center";
+    if (right) return "right";
+    return null; // default (left)
+  });
 }
 
 // Line-based block parser → an array of typed block descriptors.
@@ -88,9 +137,26 @@ function parseBlocks(lines) {
       blocks.push({ type: "list", ordered: true, items });
       continue;
     }
+    // Table — header row immediately followed by a delimiter row. A pipe line
+    // without that delimiter falls through to the paragraph branch (literal).
+    if (isTableRow(line) && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
+      const header = splitTableRow(line);
+      const aligns = tableAligns(lines[i + 1]);
+      i += 2;
+      const rows = [];
+      while (i < lines.length && isTableRow(lines[i]) && !isTableSeparator(lines[i])) {
+        rows.push(splitTableRow(lines[i]));
+        i++;
+      }
+      blocks.push({ type: "table", header, aligns, rows });
+      continue;
+    }
     // Paragraph — consecutive lines until a blank line or a new block start.
     const buf = [];
     while (i < lines.length && lines[i].trim() !== "" && !isBlockStart(lines[i])) { buf.push(lines[i]); i++; }
+    // A block-start line with no matching handler (e.g. a pipe line that is
+    // not a table) must still be consumed, or the loop would never advance.
+    if (buf.length === 0) { buf.push(lines[i]); i++; }
     blocks.push({ type: "para", text: buf.join("\n") });
   }
   return blocks;
@@ -223,6 +289,35 @@ function renderBlock(b, opts) {
       });
       return list;
     }
+    case "table": {
+      const wrap = document.createElement("div");
+      wrap.className = "p-md-tablewrap";
+      const table = document.createElement("table");
+      const cell = (tag, text, col) => {
+        const td = document.createElement(tag);
+        appendInline(td, text, opts);
+        const align = b.aligns[col];
+        if (align) td.style.textAlign = align;
+        return td;
+      };
+      const thead = document.createElement("thead");
+      const hr = document.createElement("tr");
+      b.header.forEach((text, col) => hr.appendChild(cell("th", text, col)));
+      thead.appendChild(hr);
+      table.appendChild(thead);
+      const tbody = document.createElement("tbody");
+      b.rows.forEach((cells) => {
+        const tr = document.createElement("tr");
+        // Pad/truncate to the header's column count so rows stay rectangular.
+        for (let col = 0; col < b.header.length; col++) {
+          tr.appendChild(cell("td", cells[col] == null ? "" : cells[col], col));
+        }
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      wrap.appendChild(table);
+      return wrap;
+    }
     case "para":
     default: {
       const p = document.createElement("p");
@@ -246,4 +341,37 @@ export function renderMarkdown(text, opts) {
     container.textContent = String(text == null ? "" : text);
   }
   return container;
+}
+
+// Like renderMarkdown, but wrapped in a shell with a small floating button
+// that toggles between the rendered view and the literal Markdown source.
+// Same `opts` as renderMarkdown.
+export function renderMarkdownWithToggle(text, opts) {
+  injectMarkdownStyle();
+  const src = String(text == null ? "" : text);
+  const shell = document.createElement("div");
+  shell.className = "p-md-shell";
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "p-md-rawbtn";
+  const body = document.createElement("div");
+  let showRaw = false;
+  const rerender = () => {
+    btn.textContent = showRaw ? "렌더 보기" : "원문 보기";
+    btn.title = showRaw ? "마크다운으로 렌더링해 보기" : "마크다운 원문 그대로 보기";
+    body.innerHTML = "";
+    if (showRaw) {
+      const pre = document.createElement("pre");
+      pre.className = "p-md-raw";
+      pre.textContent = src;
+      body.appendChild(pre);
+    } else {
+      body.appendChild(renderMarkdown(src, opts));
+    }
+  };
+  btn.addEventListener("click", () => { showRaw = !showRaw; rerender(); });
+  rerender();
+  shell.appendChild(btn);
+  shell.appendChild(body);
+  return shell;
 }
