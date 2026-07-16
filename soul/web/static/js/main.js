@@ -255,9 +255,9 @@ async function loadConfig() {
 // --------------------------------------------------------------------------- #
 // topbar + status card renderers (fed from state + client-side stale judgment)
 // --------------------------------------------------------------------------- #
-// Next-wake text, to the second ("다음 활동 14:30:05 · 4분 12초 후"). Not on a
-// per-second ticker by design: it refreshes on every agent state event (SSE/
-// poll render), on the 10s stale re-render, and on click of the span itself.
+// Next-wake text, to the second ("다음 활동 14:30:05 · 4분 12초 후"). The
+// countdown part is a live per-second tick (see the 1s timer in boot); the
+// absolute time only changes when a state event brings a new next_wake_at.
 function renderNextWake(state, isStale) {
   const nw = document.getElementById("next-wake");
   if (!nw) return;
@@ -488,19 +488,15 @@ function boot() {
       if (latestState) render();
     }, 10000);
 
-    // Clicking the next-wake span recomputes the seconds-level countdown on
-    // demand (it otherwise only refreshes on state events / the 10s re-render).
-    const nwEl = document.getElementById("next-wake");
-    if (nwEl) {
-      nwEl.style.cursor = "pointer";
-      nwEl.title = "클릭하여 갱신";
-      nwEl.addEventListener("click", () => {
-        if (latestState) renderNextWake(latestState, computeStale(latestState));
-      });
-    }
+    // The countdown ("N초 후") must tick every second; this touches only the
+    // next-wake span, never the full render.
+    const nextWakeTimer = setInterval(() => {
+      if (latestState) renderNextWake(latestState, computeStale(latestState));
+    }, 1000);
 
     window.addEventListener("beforeunload", () => {
       clearInterval(staleTimer);
+      clearInterval(nextWakeTimer);
       unsubscribe();
     });
 
