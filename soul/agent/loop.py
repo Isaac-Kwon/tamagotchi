@@ -30,7 +30,7 @@ from ..config import Config
 from ..knowledge import tools as knowledge_tools
 from ..knowledge import wiki
 from ..paths import DataPaths
-from ..storage import inbox, journal, state as state_store
+from ..storage import inbox, journal, outbox, state as state_store
 from . import actions as actions_mod
 from . import context as context_mod
 from . import prompts, sandbox, skill_runner, skills as skills_mod, soul
@@ -249,6 +249,13 @@ def _run_step_body(
     delivered = inbox.drain(paths)
     inbox_delivered_ids = [m.get("id") for m in delivered if m.get("id")]
 
+    # Drain any resolved/declined outbox requests (spec P4). Unconditional even
+    # when the request tool is disabled — a pending resolution still reaches the
+    # agent — and attachments are copied into home/ so code experiments can read
+    # them.
+    resolved = outbox.drain_new_resolutions(paths, home_dir=paths.home_dir)
+    observer_resolved_ids = [r.get("id") for r in resolved if r.get("id")]
+
     # Self-authored skills (spec P8): the enabled ones become skill:<name> actions
     # this step; a one-time notice about any auto-disabled skill is surfaced now.
     if cfg.skills.enabled:
@@ -263,6 +270,7 @@ def _run_step_body(
         recent_steps_n=cfg.agent.context_recent_steps,
         serendipity_rate=cfg.agent.serendipity_rate,
         inbox_messages=delivered,
+        resolved_requests=resolved,
         skill_notices=skill_notices,
     )
 
@@ -276,15 +284,24 @@ def _run_step_body(
 
     wiki_ops: list[dict[str, Any]] = []
     web_visits: list[str] = []
+    outbox_ops: list[dict[str, Any]] = []
 
     def _dispatch(name: str, arguments: Any) -> str:
-        result = knowledge_tools.dispatch(paths, name, arguments, web_config=cfg.web_actions)
+        result = knowledge_tools.dispatch(
+            paths, name, arguments,
+            web_config=cfg.web_actions,
+            observer_requests_config=cfg.observer_requests,
+            step_id=step_id,
+        )
         wiki_ops.extend(result.wiki_ops)
         web_visits.extend(result.web_visits)
+        outbox_ops.extend(result.outbox_ops)
         return result.content
 
     act_tools = knowledge_tools.act_tools(
-        include_web=cfg.web_actions.enabled, include_skills=cfg.skills.enabled
+        include_web=cfg.web_actions.enabled,
+        include_skills=cfg.skills.enabled,
+        include_observer_requests=cfg.observer_requests.enabled,
     )
 
     # Boundary before ACT: enforce the deadline / yield to a live chat (P5/P7).
@@ -432,6 +449,8 @@ def _run_step_body(
         skill_used=skill_used,
         sandbox_backend=sandbox_backend,
         inbox_delivered=inbox_delivered_ids,
+        observer_requests=[op["id"] for op in outbox_ops],
+        observer_resolved=observer_resolved_ids,
         llm=llm_meta,
         preempted=bool(controller and controller.preempted),
     )
@@ -443,6 +462,7 @@ def _run_step_body(
     # 9. Update state.json (atomic), including revealed-interest signals.
     _update_state(st, record, thread_id, topic, interest, decision)
     _update_revealed(paths, st)
+    st["open_requests"] = len(outbox.open_requests(paths))
     state_store.write_state(paths.state_json, st)
 
     return record

@@ -40,6 +40,7 @@ class RecallContext:
     serendipity_note: str | None = None  # text of a resurfaced past note (P2)
     serendipity_note_path: str | None = None  # its data-relative path (journal)
     inbox_messages: list[dict[str, Any]] = field(default_factory=list)  # delivered
+    resolved_requests: list[dict[str, Any]] = field(default_factory=list)  # outbox (P4)
     skill_notices: list[str] = field(default_factory=list)  # auto-disabled skills (P8)
 
     def to_block(self) -> str:
@@ -74,6 +75,24 @@ class RecallContext:
         if self.inbox_messages:
             lines = [f"- {m.get('text', '')}" for m in self.inbox_messages]
             parts.append("Something an observer left for you:\n" + "\n".join(lines))
+
+        # --- M2 extension point: observer request resolutions ------------- #
+        if self.resolved_requests:
+            lines = []
+            for r in self.resolved_requests:
+                text = r.get("text") or ""
+                status = r.get("status") or ""
+                line = f'- "{text}" — {status}'
+                note = r.get("note")
+                if note:
+                    line += f": {note}"
+                attachment = r.get("attachment")
+                if attachment:
+                    line += f" (a file was left at attachments/{attachment})"
+                lines.append(line)
+            parts.append(
+                "An observer responded to a request you left:\n" + "\n".join(lines)
+            )
 
         # --- M8: notice about your own skills ----------------------------- #
         if self.skill_notices:
@@ -148,6 +167,7 @@ def assemble_context(
     serendipity_rate: float = 0.0,
     rng: random.Random | None = None,
     inbox_messages: list[dict[str, Any]] | None = None,
+    resolved_requests: list[dict[str, Any]] | None = None,
     skill_notices: list[str] | None = None,
 ) -> RecallContext:
     """Build the recall context for the upcoming step.
@@ -166,6 +186,7 @@ def assemble_context(
         recent_steps=recent,
         thread=thread,
         inbox_messages=list(inbox_messages or []),
+        resolved_requests=list(resolved_requests or []),
         skill_notices=list(skill_notices or []),
     )
 

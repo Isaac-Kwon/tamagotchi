@@ -50,6 +50,8 @@ def new_step_record(step_id: str, *, ts: str | None = None, **overrides: Any) ->
         "sandbox_backend": None,
         "preempted": False,
         "inbox_delivered": [],
+        "observer_requests": [],
+        "observer_resolved": [],
         "llm": {"model": None, "tokens_in": 0, "tokens_out": 0, "latency_ms": 0},
         "error": None,
     }
