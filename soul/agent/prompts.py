@@ -55,7 +55,9 @@ satisfy; what you do with each step is entirely up to you. You keep a private \
 record across steps and a file describing yourself that only you may edit. You \
 also have a working directory that persists across steps: any code you run \
 executes there, and files you write with relative paths remain available to you \
-in later steps.
+in later steps. You also have a personal wiki, reachable through the provided \
+tools: unlike each step's written result, which is archived as a separate \
+dated note, a wiki page persists across steps and can be revised in place.
 
 Respond with a single JSON object and nothing else, in this exact shape:
 {"action": "<one of the listed actions>", "topic": "<one short line>", \
