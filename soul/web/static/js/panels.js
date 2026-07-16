@@ -1109,11 +1109,12 @@ export function initPanels({ root, api, onChatStateChange }) {
         const isError = s.kind === "error" || !!s.error;
         const row = el("button", {
           class: "p-row",
-          style: "display:grid;grid-template-columns:88px 150px 1fr auto;gap:12px;align-items:center;text-align:left;padding:8px 12px;border-radius:var(--radius-sm);border:1px solid var(--line-soft);background:var(--panel-2);color:var(--ink);font-family:var(--mono);font-size:12.5px;cursor:pointer",
+          style: "display:grid;grid-template-columns:88px 150px auto 1fr auto;gap:12px;align-items:center;text-align:left;padding:8px 12px;border-radius:var(--radius-sm);border:1px solid var(--line-soft);background:var(--panel-2);color:var(--ink);font-family:var(--mono);font-size:12.5px;cursor:pointer",
         }, [
           el("span", { style: "color:var(--ink-faint)", text: s.id }),
           el("span", { text: fmtShort(s.ts) }),
           el("span", { text: actionLabelKo(s.action) }),
+          el("span", { style: "font-family:'Pretendard Variable',Pretendard,system-ui,sans-serif;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0", text: s.topic || "" }),
           isError ? el("span", { style: "font-size:10px;padding:1px 7px;border-radius:999px;background:var(--warn-soft);color:var(--warn)", text: "error" }) : el("span", {}),
         ]);
         row.addEventListener("click", () => openStepDetail(s.id));
