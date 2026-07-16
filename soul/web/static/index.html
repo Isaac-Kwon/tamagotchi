@@ -326,6 +326,132 @@
   }
   .revealed-thread-topic { flex: 1; font-weight: 600; }
 
+  /* ---- 통계 패널 (stats) ---- */
+  :root {
+    --viz-bar: #4a7dbf;      /* single-hue magnitude bars */
+    --viz-pos: #4a7dbf;      /* mood valence: positive */
+    --viz-neu: #b08a3e;      /* mood valence: neutral  */
+    --viz-neg: #b23b3b;      /* mood valence: negative */
+  }
+  .stat-tiles { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .stat-tile {
+    flex: 1 1 90px;
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    background: #fff;
+    padding: 8px 10px;
+    text-align: center;
+  }
+  .stat-tile-num { font-size: 20px; font-weight: 700; }
+  .stat-tile-label { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+
+  .rhythm-strip {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 96px;
+    padding: 6px 8px 0 8px;
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    background: #fff;
+    overflow-x: auto;
+  }
+  .rhythm-bar {
+    flex: 0 0 5px;
+    border-radius: 2px 2px 0 0;
+    cursor: pointer;
+    min-height: 3px;
+  }
+  .rhythm-bar:hover { filter: brightness(1.25); }
+  .rhythm-legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 11.5px; color: var(--muted); margin: 6px 0 2px; }
+  .legend-swatch {
+    display: inline-block;
+    width: 9px; height: 9px;
+    border-radius: 2px;
+    margin-right: 4px;
+    vertical-align: baseline;
+  }
+
+  .hbar-list { display: flex; flex-direction: column; gap: 5px; margin: 4px 0 8px; }
+  .hbar-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+  .hbar-label { flex: 0 0 150px; text-align: right; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hbar-track { flex: 1; background: #f6f0e2; border-radius: 4px; height: 12px; overflow: hidden; }
+  .hbar-fill { background: var(--viz-bar); height: 100%; border-radius: 0 4px 4px 0; min-width: 2px; }
+  .hbar-value { flex: 0 0 80px; color: var(--muted); font-size: 11.5px; }
+
+  .hist { display: flex; align-items: flex-end; gap: 4px; height: 90px; padding: 4px 2px 0; }
+  .hist-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
+  .hist-count { font-size: 10.5px; color: var(--muted); margin-bottom: 2px; }
+  .hist-bar { width: 70%; max-width: 26px; background: var(--viz-bar); border-radius: 3px 3px 0 0; }
+  .hist-ticks { display: flex; gap: 4px; border-top: 1px solid var(--panel-border); margin-top: 2px; padding-top: 2px; }
+  .hist-tick { flex: 1; text-align: center; font-size: 10.5px; color: var(--muted); }
+
+  .thread-list { display: flex; flex-direction: column; gap: 6px; }
+  .thread-row {
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    background: #fff;
+    padding: 6px 8px;
+    font-size: 12px;
+  }
+  .thread-topic { font-weight: 600; margin-bottom: 3px; word-break: break-word; }
+  .thread-track { background: #f6f0e2; border-radius: 4px; height: 10px; overflow: hidden; margin-bottom: 3px; }
+  .thread-fill { background: var(--viz-bar); height: 100%; border-radius: 0 4px 4px 0; min-width: 3px; }
+  .thread-meta { color: var(--muted); font-size: 11px; }
+
+  .error-list { display: flex; flex-direction: column; gap: 5px; }
+  .error-row {
+    border: 1px solid #e4c2c2;
+    border-radius: 6px;
+    background: #fbf1f1;
+    padding: 6px 8px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .error-row:hover { background: #f6e3e3; }
+  .error-row-head { display: flex; gap: 8px; color: var(--accent-warn); font-weight: 600; }
+  .error-row-ts { margin-left: auto; color: var(--muted); font-weight: 400; }
+  .error-row-msg { color: var(--ink); margin-top: 2px; word-break: break-word; }
+
+  /* ---- 스킬 패널 ---- */
+  .skill-list { display: flex; flex-direction: column; gap: 8px; }
+  .skill-card {
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    background: #fff;
+    padding: 8px 10px;
+    font-size: 12.5px;
+  }
+  .skill-card.skill-disabled { background: #f3efe6; color: var(--muted); }
+  .skill-head { display: flex; align-items: center; gap: 8px; }
+  .skill-name { font-weight: 700; font-family: "Consolas", "Menlo", monospace; }
+  .skill-badge {
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-left: auto;
+  }
+  .skill-badge-on { background: #e5f2e5; color: #3c7a3c; }
+  .skill-badge-off { background: #f6e0e0; color: var(--accent-warn); }
+  .skill-desc { margin: 4px 0; }
+  .skill-meta { font-size: 11.5px; color: var(--muted); }
+  .skill-fail-warn { color: var(--accent-warn); font-weight: 600; }
+
+  .journal-error-chip {
+    background: #f6e0e0;
+    color: var(--accent-warn);
+    padding: 0 6px;
+    border-radius: 8px;
+    font-size: 10.5px;
+    font-weight: 600;
+  }
+  .step-error-note {
+    color: var(--accent-warn);
+    font-size: 12px;
+    margin-top: 4px;
+  }
+
   .journal-list { display: flex; flex-direction: column; gap: 2px; }
   .journal-row {
     display: flex;

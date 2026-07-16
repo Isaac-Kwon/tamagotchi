@@ -9,7 +9,11 @@
 //   ⑥ inbox  — 선물/메시지 보내기 (POST /api/inbox)
 //   ⑦ outbox — 요청: 에이전트가 남긴 요청 투두리스트 (완료/거절/무시/다시 열기)
 //   ⑧ revealed — stated vs revealed 흥미 패널
-//   journal (secondary/raw) — 스텝 원문 목록
+//   ⑨ stats  — 결정/흥미/행동/기분 분포 + 삶의 리듬 + 주제 흐름 + 에러
+//   ⑩ skills — 에이전트가 만든 스킬의 상태 카드 (실패 카운터/자동 비활성)
+//   journal (secondary/raw) — 스텝 원문 목록 (에러 스텝은 배지로 표시)
+//
+// 탭은 #hash 로 딥링크된다 (예: /#stats).
 //
 // Plain DOM + the CSS classes defined in index.html's <style>. No frameworks.
 
@@ -55,8 +59,58 @@ const TABS = [
   { id: "inbox", label: "선물/메시지" },
   { id: "outbox", label: "요청" },
   { id: "revealed", label: "말과 행동" },
+  { id: "stats", label: "통계" },
+  { id: "skills", label: "스킬" },
   { id: "journal", label: "저널(원문)" },
 ];
+
+// --------------------------------------------------------------------------
+// 통계 패널이 쓰는 상수: 기분(mood)의 결/색 매핑.
+// 색은 정체성이 아니라 결(긍정/중립/부정) 단위로만 부여한다 — 8개 기분을
+// 8색으로 구분하는 대신 3색 + 툴팁/범례 텍스트로 판독성을 지킨다.
+// (#4a7dbf/#b08a3e/#b23b3b: 밝은 표면 기준 CVD 검증 통과 조합)
+// --------------------------------------------------------------------------
+const MOOD_VALENCE = {
+  curious: "pos", excited: "pos", proud: "pos",
+  neutral: "neu", calm: "neu",
+  bored: "neg", frustrated: "neg", tired: "neg",
+};
+const VALENCE_COLOR = { pos: "#4a7dbf", neu: "#b08a3e", neg: "#b23b3b" };
+const VALENCE_LABEL = {
+  pos: "긍정 (curious·excited·proud)",
+  neu: "중립 (neutral·calm)",
+  neg: "부정 (bored·frustrated·tired)",
+};
+const DECISION_ORDER = ["deepen", "shelve", "abandon", "new"];
+const DECISION_GLOSS = { deepen: "계속", shelve: "보류", abandon: "중단", new: "전환" };
+
+function moodColor(mood) {
+  return VALENCE_COLOR[MOOD_VALENCE[mood] || "neu"];
+}
+
+function pct(n, total) {
+  if (!total) return "0%";
+  return Math.round((n / total) * 100) + "%";
+}
+
+// 수평 바 목록: 단일 색(크기 인코딩), 값은 항상 텍스트로 병기.
+function hbarList(entries) {
+  const max = Math.max(1, ...entries.map((e) => e.count));
+  const host = el("div", { class: "hbar-list" });
+  entries.forEach((e) => {
+    const fill = el("div", { class: "hbar-fill" });
+    fill.style.width = Math.max(2, Math.round((e.count / max) * 100)) + "%";
+    if (e.color) fill.style.background = e.color;
+    host.appendChild(
+      el("div", { class: "hbar-row" }, [
+        el("span", { class: "hbar-label", text: e.label }),
+        el("div", { class: "hbar-track" }, [fill]),
+        el("span", { class: "hbar-value", text: e.value }),
+      ])
+    );
+  });
+  return host;
+}
 
 export function initPanels({ root, api, onChatStateChange }) {
   root.innerHTML = "";
@@ -74,6 +128,12 @@ export function initPanels({ root, api, onChatStateChange }) {
     activeId = id;
     Object.entries(sections).forEach(([k, node]) => node.classList.toggle("active", k === id));
     Object.entries(buttons).forEach(([k, btn]) => btn.classList.toggle("active", k === id));
+    // Deep-linkable tabs: #wiki, #stats, ... survive a reload / can be shared.
+    try {
+      history.replaceState(null, "", "#" + id);
+    } catch (_e) {
+      /* ignore (e.g. sandboxed iframe) */
+    }
     const loader = loaders[id];
     if (loader && !loader._loaded) {
       loader._loaded = true;
@@ -220,6 +280,7 @@ export function initPanels({ root, api, onChatStateChange }) {
         const rec = detail && detail.record;
         if (rec) {
           header.innerHTML = "";
+          header.appendChild(el("div", { text: "스텝: " + stepId }));
           header.appendChild(
             el("div", { class: "step-meta" }, [
               el("span", { text: "행동: " + (rec.action || "-") }),
@@ -229,6 +290,11 @@ export function initPanels({ root, api, onChatStateChange }) {
               el("span", { text: fmtTime(rec.ts) }),
             ])
           );
+          if (rec.error) {
+            const err = rec.error;
+            const msg = typeof err === "object" ? `${err.phase || "?"} — ${err.message || "?"}` : String(err);
+            header.appendChild(el("div", { class: "step-error-note", text: "이 스텝은 에러로 끝났습니다: " + msg }));
+          }
         }
         contentBody.textContent = (detail && detail.content) || "(산출물 내용 없음)";
       } catch (e) {
@@ -720,6 +786,248 @@ export function initPanels({ root, api, onChatStateChange }) {
   }
 
   // ---------------------------------------------------------------
+  // 통계 — 결정/흥미/행동/기분 분포, 삶의 리듬, 주제 흐름, 에러
+  // ---------------------------------------------------------------
+  {
+    const sec = sections.stats;
+    sec.appendChild(el("h3", { text: "통계" }));
+    sec.appendChild(
+      el("p", {
+        class: "panel-note",
+        text: "저널 전체에서 계산한 행동 통계입니다. 결정 편향(예: deepen 쏠림)과 흥미 자기평가의 분포를 있는 그대로 보여줍니다.",
+      })
+    );
+    const refreshBtn = el("button", { text: "새로고침" });
+    const body = el("div", { class: "stats-body" });
+    sec.appendChild(refreshBtn);
+    sec.appendChild(body);
+
+    async function render() {
+      body.innerHTML = "불러오는 중…";
+      let s;
+      try {
+        s = await api.getStats();
+      } catch (e) {
+        body.innerHTML = "";
+        body.appendChild(emptyNote("통계를 불러오지 못했습니다: " + e.message));
+        return;
+      }
+      body.innerHTML = "";
+      if (!s || !s.total_steps) {
+        body.appendChild(emptyNote("아직 기록된 스텝이 없습니다."));
+        return;
+      }
+
+      // -- 요약 타일 --
+      const hist = s.interest_hist || {};
+      let histSum = 0, histN = 0;
+      Object.entries(hist).forEach(([k, v]) => { histSum += Number(k) * v; histN += v; });
+      const avgInterest = histN ? (histSum / histN).toFixed(1) : "-";
+      const tiles = el("div", { class: "stat-tiles" }, [
+        tile(String(s.total_steps), "스텝"),
+        tile(avgInterest, "평균 흥미"),
+        tile(String((s.threads || []).length), "스레드"),
+        tile(String((s.errors && s.errors.count) || 0), "에러"),
+      ]);
+      body.appendChild(tiles);
+
+      // -- 삶의 리듬: 막대 높이 = 흥미, 색 = 기분의 결 --
+      body.appendChild(el("h4", { text: "삶의 리듬 (최근 " + (s.timeline || []).length + "스텝: 높이=흥미, 색=기분)" }));
+      const strip = el("div", { class: "rhythm-strip" });
+      (s.timeline || []).forEach((t) => {
+        const bar = el("div", { class: "rhythm-bar" });
+        const interest = t.interest;
+        bar.style.height = interest ? Math.round((interest / 10) * 82) + "px" : "3px";
+        bar.style.background = interest ? moodColor(t.mood) : "#c9c1b0";
+        bar.title = `${t.id} · ${t.mood || "?"} · 흥미 ${interest != null ? interest : "-"} · ${t.decision || "-"}`;
+        bar.addEventListener("click", () => panels.openStep(t.id));
+        strip.appendChild(bar);
+      });
+      body.appendChild(strip);
+      const legend = el("div", { class: "rhythm-legend" });
+      Object.entries(VALENCE_LABEL).forEach(([v, label]) => {
+        const sw = el("span", { class: "legend-swatch" });
+        sw.style.background = VALENCE_COLOR[v];
+        legend.appendChild(el("span", {}, [sw, label]));
+      });
+      body.appendChild(legend);
+      strip.scrollLeft = strip.scrollWidth; // 최신 스텝이 보이게 오른쪽 끝으로
+
+      // -- 결정 분포 (고정 순서: 네 결정은 대칭이다) --
+      body.appendChild(el("h4", { text: "결정 분포" }));
+      const dTotal = s.decision_total || 0;
+      body.appendChild(
+        hbarList(
+          DECISION_ORDER.map((d) => ({
+            label: `${d} (${DECISION_GLOSS[d]})`,
+            count: (s.decisions && s.decisions[d]) || 0,
+            value: `${(s.decisions && s.decisions[d]) || 0}회 · ${pct((s.decisions && s.decisions[d]) || 0, dTotal)}`,
+          }))
+        )
+      );
+
+      // -- 흥미 히스토그램 (1–10) --
+      body.appendChild(el("h4", { text: "흥미 분포 (1–10, 자기평가)" }));
+      const histHost = el("div", { class: "hist" });
+      const ticks = el("div", { class: "hist-ticks" });
+      const histMax = Math.max(1, ...Object.values(hist));
+      for (let i = 1; i <= 10; i++) {
+        const n = hist[String(i)] || 0;
+        const col = el("div", { class: "hist-col" });
+        if (n > 0) col.appendChild(el("div", { class: "hist-count", text: String(n) }));
+        const bar = el("div", { class: "hist-bar" });
+        bar.style.height = n ? Math.max(3, Math.round((n / histMax) * 60)) + "px" : "0";
+        col.appendChild(bar);
+        histHost.appendChild(col);
+        ticks.appendChild(el("div", { class: "hist-tick", text: String(i) }));
+      }
+      body.appendChild(histHost);
+      body.appendChild(ticks);
+
+      // -- 행동 분포 --
+      body.appendChild(el("h4", { text: "행동 분포" }));
+      const actions = Object.entries(s.actions || {}).sort((a, b) => b[1] - a[1]);
+      body.appendChild(
+        hbarList(actions.map(([a, n]) => ({ label: a, count: n, value: `${n}회 · ${pct(n, s.total_steps)}` })))
+      );
+
+      // -- 기분 분포 (색 = 결) --
+      body.appendChild(el("h4", { text: "기분 분포" }));
+      const moods = Object.entries(s.moods || {}).sort((a, b) => b[1] - a[1]);
+      body.appendChild(
+        hbarList(
+          moods.map(([m, n]) => ({
+            label: m, count: n, color: moodColor(m),
+            value: `${n}회 · ${pct(n, s.total_steps)}`,
+          }))
+        )
+      );
+
+      // -- 주제 흐름 (스레드 구간, 최신 우선) --
+      const threads = (s.threads || []).slice(-30).reverse();
+      body.appendChild(el("h4", { text: "주제 흐름 (최근 " + threads.length + "개 스레드)" }));
+      const threadHost = el("div", { class: "thread-list" });
+      const maxSteps = Math.max(1, ...threads.map((t) => t.steps || 0));
+      threads.forEach((t) => {
+        const fill = el("div", { class: "thread-fill" });
+        fill.style.width = Math.max(3, Math.round(((t.steps || 0) / maxSteps) * 100)) + "%";
+        threadHost.appendChild(
+          el("div", { class: "thread-row" }, [
+            el("div", { class: "thread-topic", text: t.topic || "(주제 없음)" }),
+            el("div", { class: "thread-track" }, [fill]),
+            el("div", {
+              class: "thread-meta",
+              text: `${t.steps}스텝 · 평균 흥미 ${t.avg_interest != null ? t.avg_interest : "-"} · ${fmtTime(t.start_ts)}`,
+            }),
+          ])
+        );
+      });
+      if (!threads.length) threadHost.appendChild(emptyNote("아직 스레드가 없습니다."));
+      body.appendChild(threadHost);
+
+      // -- 에러 --
+      const errs = ((s.errors && s.errors.recent) || []).slice().reverse();
+      body.appendChild(el("h4", { text: "에러 (" + ((s.errors && s.errors.count) || 0) + "건)" }));
+      if (!errs.length) {
+        body.appendChild(emptyNote("기록된 에러가 없습니다."));
+      } else {
+        const errHost = el("div", { class: "error-list" });
+        errs.forEach((e2) => {
+          const row = el("div", { class: "error-row" }, [
+            el("div", { class: "error-row-head" }, [
+              el("span", { text: e2.id || "?" }),
+              el("span", { text: e2.phase || "-" }),
+              el("span", { class: "error-row-ts", text: fmtTime(e2.ts) }),
+            ]),
+            el("div", { class: "error-row-msg", text: e2.message || "(메시지 없음)" }),
+          ]);
+          if (e2.id) row.addEventListener("click", () => panels.openStep(e2.id));
+          errHost.appendChild(row);
+        });
+        body.appendChild(errHost);
+      }
+    }
+
+    function tile(num, label) {
+      return el("div", { class: "stat-tile" }, [
+        el("div", { class: "stat-tile-num", text: num }),
+        el("div", { class: "stat-tile-label", text: label }),
+      ]);
+    }
+
+    refreshBtn.addEventListener("click", render);
+    loaders.stats = { load: render };
+  }
+
+  // ---------------------------------------------------------------
+  // 스킬 — 에이전트가 스스로 만든 도구의 상태 카드
+  // ---------------------------------------------------------------
+  {
+    const sec = sections.skills;
+    sec.appendChild(el("h3", { text: "스킬" }));
+    sec.appendChild(
+      el("p", {
+        class: "panel-note",
+        text: "에이전트가 스스로 작성·등록한 스킬 목록입니다. 실패가 누적되면 자동으로 비활성화되고, 그 사실은 다음 활동 시점에 에이전트에게 통지됩니다.",
+      })
+    );
+    const refreshBtn = el("button", { text: "새로고침" });
+    const listHost = el("div", { class: "skill-list" });
+    sec.appendChild(refreshBtn);
+    sec.appendChild(listHost);
+
+    async function render() {
+      listHost.innerHTML = "불러오는 중…";
+      let res;
+      try {
+        res = await api.getSkills();
+      } catch (e) {
+        listHost.innerHTML = "";
+        listHost.appendChild(emptyNote("스킬 목록을 불러오지 못했습니다: " + e.message));
+        return;
+      }
+      listHost.innerHTML = "";
+      const skills = (res && res.skills) || [];
+      const threshold = (res && res.auto_disable_after_failures) || 3;
+      if (!skills.length) {
+        listHost.appendChild(emptyNote("아직 만든 스킬이 없습니다."));
+        return;
+      }
+      skills.forEach((m) => {
+        const failText = `실패 ${m.failures || 0}/${threshold}`;
+        const meta = [
+          `v${m.version != null ? m.version : "?"}`,
+          failText,
+          "갱신 " + fmtTime(m.updated_at),
+        ];
+        const metaHost = el("div", { class: "skill-meta" });
+        meta.forEach((t, i) => {
+          if (i) metaHost.appendChild(document.createTextNode(" · "));
+          const span = el("span", { text: t });
+          if (t === failText && (m.failures || 0) > 0) span.className = "skill-fail-warn";
+          metaHost.appendChild(span);
+        });
+        listHost.appendChild(
+          el("div", { class: "skill-card" + (m.enabled ? "" : " skill-disabled") }, [
+            el("div", { class: "skill-head" }, [
+              el("span", { class: "skill-name", text: m.name }),
+              el("span", {
+                class: "skill-badge " + (m.enabled ? "skill-badge-on" : "skill-badge-off"),
+                text: m.enabled ? "활성" : "비활성",
+              }),
+            ]),
+            el("div", { class: "skill-desc", text: m.description || "(설명 없음)" }),
+            metaHost,
+          ])
+        );
+      });
+    }
+
+    refreshBtn.addEventListener("click", render);
+    loaders.skills = { load: render };
+  }
+
+  // ---------------------------------------------------------------
   // 저널 (원문, 보조 화면)
   // ---------------------------------------------------------------
   {
@@ -739,8 +1047,10 @@ export function initPanels({ root, api, onChatStateChange }) {
             list.appendChild(emptyNote("아직 기록된 스텝이 없습니다."));
           }
           steps.forEach((s) => {
+            const isError = s.kind === "error" || !!s.error;
             const row = el("div", { class: "journal-row" }, [
               el("span", { class: "journal-id", text: s.id }),
+              isError ? el("span", { class: "journal-error-chip", text: "에러" }) : null,
               el("span", { text: s.action || "-" }),
               el("span", { text: "흥미 " + (s.interest != null ? s.interest : "-") }),
               el("span", { text: s.decision || "-" }),
@@ -757,8 +1067,9 @@ export function initPanels({ root, api, onChatStateChange }) {
     };
   }
 
-  // default tab
-  activate("soul");
+  // default tab: a valid #hash deep-link wins, else the soul tab
+  const hashTab = (location.hash || "").slice(1);
+  activate(TABS.some((t) => t.id === hashTab) ? hashTab : "soul");
 
   const panels = {
     openStep: (stepId) => openStepDetail(stepId),
@@ -771,6 +1082,14 @@ export function initPanels({ root, api, onChatStateChange }) {
       if (loaders.revealed) {
         loaders.revealed._loaded = false;
         if (activeId === "revealed") loaders.revealed.load();
+      }
+    },
+    refreshStats: () => {
+      // 새 스텝이 기록될 때마다 통계를 신선하게: 활성 탭이면 즉시 다시
+      // 그리고, 아니면 다음 활성화 때 다시 불러오게 표시만 해 둔다.
+      if (loaders.stats) {
+        loaders.stats._loaded = false;
+        if (activeId === "stats") loaders.stats.load();
       }
     },
   };

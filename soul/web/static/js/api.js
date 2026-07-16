@@ -11,6 +11,8 @@
 //   GET  /api/reports
 //   GET  /api/report/{date}
 //   GET  /api/revealed
+//   GET  /api/stats?timeline=N
+//   GET  /api/skills
 //   GET  /api/wiki/pages
 //   GET  /api/wiki/search?q=
 //   GET  /api/wiki/page/{slug}
@@ -119,6 +121,63 @@ const MOCK_OUTBOX = [
   },
 ];
 
+function mockStats() {
+  const moods = MOCK_MOODS;
+  const timeline = [];
+  for (let i = 1; i <= 60; i++) {
+    timeline.push({
+      id: `step-${String(i).padStart(6, "0")}`,
+      ts: new Date(Date.now() - (60 - i) * 120000).toISOString(),
+      interest: 1 + ((i * 3) % 10),
+      mood: moods[i % moods.length],
+      decision: MOCK_DECISIONS[i % MOCK_DECISIONS.length],
+      action: MOCK_ACTIONS[i % MOCK_ACTIONS.length],
+    });
+  }
+  return {
+    total_steps: 60,
+    decisions: { deepen: 41, shelve: 8, abandon: 2, new: 9 },
+    decision_total: 60,
+    actions: { free_write: 12, thought_experiment: 18, code_experiment: 20, organize_notes: 8, web_explore: 2 },
+    moods: { curious: 25, proud: 18, excited: 6, neutral: 5, frustrated: 6 },
+    interest_hist: { "4": 1, "6": 6, "7": 14, "8": 24, "9": 14, "10": 1 },
+    timeline,
+    threads: [
+      { thread_id: "th-0001", topic: "목업 스레드 A", steps: 5, start_ts: timeline[0].ts, end_ts: timeline[4].ts, avg_interest: 7.4 },
+      { thread_id: "th-0006", topic: "목업 스레드 B (조금 더 긴 제목)", steps: 12, start_ts: timeline[5].ts, end_ts: timeline[16].ts, avg_interest: 8.2 },
+      { thread_id: "th-0018", topic: "목업 스레드 C", steps: 2, start_ts: timeline[17].ts, end_ts: timeline[18].ts, avg_interest: 6.5 },
+    ],
+    errors: {
+      count: 2,
+      recent: [
+        { id: "step-000031", ts: new Date(Date.now() - 3600000).toISOString(), phase: "act", message: "LLM request failed after 3 attempts: timed out" },
+        { id: "step-000044", ts: new Date(Date.now() - 1800000).toISOString(), phase: "act", message: "act_json_unparseable" },
+      ],
+    },
+  };
+}
+
+const MOCK_SKILLS = [
+  {
+    name: "doodle",
+    description: "간단한 ASCII 그림을 그립니다.",
+    version: 3,
+    enabled: true,
+    failures: 2,
+    created_at: new Date(Date.now() - 86400000).toISOString(),
+    updated_at: new Date(Date.now() - 3600000).toISOString(),
+  },
+  {
+    name: "old-tool",
+    description: "실패가 누적되어 자동 비활성화된 스킬.",
+    version: 1,
+    enabled: false,
+    failures: 3,
+    created_at: new Date(Date.now() - 172800000).toISOString(),
+    updated_at: new Date(Date.now() - 86400000).toISOString(),
+  },
+];
+
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -173,6 +232,8 @@ async function mockFetch(path, opts) {
   if (p === "/api/revealed") {
     return (await mockState()).revealed;
   }
+  if (p === "/api/stats") return mockStats();
+  if (p === "/api/skills") return { skills: MOCK_SKILLS, auto_disable_after_failures: 3 };
   if (p === "/api/wiki/pages") return { pages: MOCK_WIKI_PAGES };
   if (p === "/api/wiki/search") {
     const q = url.searchParams.get("q") || "";
@@ -277,6 +338,8 @@ export const api = {
   getReport: (date) => get(`/api/report/${encodeURIComponent(date)}`),
 
   getRevealed: () => get("/api/revealed"),
+  getStats: (timeline = 250) => get(`/api/stats?timeline=${encodeURIComponent(timeline)}`),
+  getSkills: () => get("/api/skills"),
 
   getWikiPages: () => get("/api/wiki/pages"),
   searchWiki: (q) => get(`/api/wiki/search?q=${encodeURIComponent(q || "")}`),
