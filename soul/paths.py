@@ -23,6 +23,7 @@ DATA_SUBDIRS: tuple[str, ...] = (
     "home",
     "reports",
     "inbox",
+    "outbox",
     "chat",
     "transcripts",
     "control",
@@ -170,6 +171,31 @@ class DataPaths:
     @property
     def inbox_lock(self) -> Path:
         return self.inbox_dir / "inbox.lock"
+
+    # -- outbox queue (observer-request channel) ---------------------------- #
+    @property
+    def outbox_dir(self) -> Path:
+        return self.root / "outbox"
+
+    @property
+    def outbox_requests(self) -> Path:
+        return self.outbox_dir / "requests.jsonl"
+
+    @property
+    def outbox_resolutions(self) -> Path:
+        return self.outbox_dir / "resolutions.jsonl"
+
+    @property
+    def outbox_attachments_dir(self) -> Path:
+        return self.outbox_dir / "attachments"
+
+    @property
+    def outbox_seen(self) -> Path:
+        return self.outbox_dir / "seen.json"
+
+    @property
+    def outbox_lock(self) -> Path:
+        return self.outbox_dir / "outbox.lock"
 
 
 # --------------------------------------------------------------------------- #
