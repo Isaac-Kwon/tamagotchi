@@ -24,6 +24,7 @@ from typing import Any
 
 from ..agent import skills as skills_mod
 from ..paths import DataPaths
+from ..storage import outbox
 from . import wiki
 
 
@@ -124,18 +125,36 @@ SKILL_TOOLS: list[dict[str, Any]] = [
     ),
 ]
 
+OUTBOX_TOOLS: list[dict[str, Any]] = [
+    _fn(
+        "observer_request",
+        "leave a request for an observer; a response may arrive later, or not",
+        {"text": {"type": "string", "description": "what you are asking for"}},
+        ["text"],
+    ),
+]
+
 WIKI_TOOL_NAMES = frozenset(t["function"]["name"] for t in WIKI_TOOLS)
 WEB_TOOL_NAMES = frozenset(t["function"]["name"] for t in WEB_TOOLS)
 SKILL_TOOL_NAMES = frozenset(t["function"]["name"] for t in SKILL_TOOLS)
+OUTBOX_TOOL_NAMES = frozenset(t["function"]["name"] for t in OUTBOX_TOOLS)
 
 
-def act_tools(*, include_web: bool = True, include_skills: bool = True) -> list[dict[str, Any]]:
-    """Tools offered during ACT (wiki always; web + skill_write unless disabled)."""
+def act_tools(
+    *,
+    include_web: bool = True,
+    include_skills: bool = True,
+    include_observer_requests: bool = True,
+) -> list[dict[str, Any]]:
+    """Tools offered during ACT (wiki always; web + skill_write + observer_request
+    unless disabled)."""
     tools = list(WIKI_TOOLS)
     if include_web:
         tools += WEB_TOOLS
     if include_skills:
         tools += SKILL_TOOLS
+    if include_observer_requests:
+        tools += OUTBOX_TOOLS
     return tools
 
 
@@ -148,6 +167,7 @@ class DispatchResult:
     wiki_ops: list[dict[str, Any]] = field(default_factory=list)
     web_visits: list[str] = field(default_factory=list)
     skill_ops: list[dict[str, Any]] = field(default_factory=list)
+    outbox_ops: list[dict[str, Any]] = field(default_factory=list)
 
 
 def _parse_args(arguments: Any) -> dict[str, Any]:
@@ -169,6 +189,8 @@ def dispatch(
     arguments: Any,
     *,
     web_config: Any | None = None,
+    observer_requests_config: Any | None = None,
+    step_id: str | None = None,
 ) -> DispatchResult:
     """Execute one tool call and return its result + journal metadata.
 
@@ -204,6 +226,11 @@ def dispatch(
         if name == "skill_write":
             return _dispatch_skill_write(paths, args)
 
+        if name == "observer_request":
+            return _dispatch_observer_request(
+                paths, args, observer_requests_config, step_id,
+            )
+
         if name in WEB_TOOL_NAMES:
             return _dispatch_web(name, args, web_config)
 
@@ -236,6 +263,38 @@ def _dispatch_skill_write(paths: DataPaths, args: dict[str, Any]) -> DispatchRes
             ensure_ascii=False,
         ),
         skill_ops=[{"tool": "skill_write", "name": manifest["name"]}],
+    )
+
+
+def _dispatch_observer_request(
+    paths: DataPaths,
+    args: dict[str, Any],
+    observer_requests_config: Any | None,
+    step_id: str | None,
+) -> DispatchResult:
+    """Leave a request for an observer (spec: outbox channel).
+
+    Enforces the open-request cap, then appends the request. Errors are returned
+    as content — this never raises, matching the module contract.
+    """
+    text = str(args.get("text", "")).strip()
+    if not text:
+        return DispatchResult(content=json.dumps({"error": "text is required"}))
+
+    max_open = int(getattr(observer_requests_config, "max_open", 5) or 5)
+    open_count = len(outbox.open_requests(paths))
+    if open_count >= max_open:
+        return DispatchResult(
+            content=json.dumps(
+                {"error": f"you already have {open_count} unanswered requests"},
+                ensure_ascii=False,
+            )
+        )
+
+    rec = outbox.append_request(paths, text, step_id=step_id)
+    return DispatchResult(
+        content=json.dumps({"left": rec["id"]}, ensure_ascii=False),
+        outbox_ops=[{"tool": "observer_request", "id": rec["id"]}],
     )
 
 
