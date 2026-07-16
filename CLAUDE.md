@@ -29,7 +29,7 @@ wsl -- bash -lc "cd /mnt/c/Users/<you>/Documents/tamagotchi && .venv-wsl/bin/pyt
 .venv\Scripts\python.exe run_agent.py --once --mock
 ```
 
-242 tests should be green. No network calls in tests — `httpx.MockTransport`
+252 tests should be green. No network calls in tests — `httpx.MockTransport`
 and `FakeLLM` stand in for the real LLM/HTTP; see "Test conventions" below.
 
 ## Invariants — do not break these

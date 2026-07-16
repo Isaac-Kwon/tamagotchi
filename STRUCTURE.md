@@ -52,7 +52,7 @@ and fields were written from reading the actual code; wherever it differs from
 
 | Module | Role | Key functions/classes |
 |---|---|---|
-| `journal.py` | Step-record JSONL append/tail (monthly rotation) + the pure derived function `revealed_interest`. | `new_step_record`, `append_step`, `read_all`, `tail`, `revealed_interest` |
+| `journal.py` | Step-record JSONL append/tail (monthly rotation) + the pure derived functions `revealed_interest` and `stats`. | `new_step_record`, `append_step`, `read_all`, `tail`, `revealed_interest`, `stats` |
 | `state.py` | Atomic read/write of `state.json` (tmp + `os.replace`) + step id counter. | `read_state`, `write_state`, `next_step_id`, `default_state` |
 | `inbox.py` | Observer-message pending→delivered queue. The web only appends; the agent drains atomically at step start. | `append_pending`, `drain`, `has_pending`, `peek_pending` |
 | `outbox.py` | Agent→observer request channel. The agent appends requests (`observer_request` tool); the web appends resolutions; status is derived by joining the two append-only logs; the agent drains new resolutions at step start via a cursor (`seen.json`) and copies attachments into `home/`. | `append_request`, `list_requests`, `open_requests`, `append_resolution`, `drain_new_resolutions`, `OutboxStateError` |
@@ -160,6 +160,8 @@ own (`journal/ notes/ home/ inbox/ outbox/ chat/`) every
 | GET | `/api/reports` | List of dates for which reports exist (newest first). |
 | GET | `/api/report/{date}` | Report body for that date. |
 | GET | `/api/revealed` | All stated-vs-revealed interest derived metrics. |
+| GET | `/api/stats?timeline=N` | Journal-wide aggregates for the stats panel: decision/action/mood distributions, interest histogram, per-step timeline (last N), chronological thread segments, error count + recent errors. |
+| GET | `/api/skills` | Self-authored skill manifests (name/version/enabled/failures) + the `auto_disable_after_failures` threshold. |
 | GET | `/api/wiki/pages` | Full wiki page list (slug/title/updated). |
 | GET | `/api/wiki/search?q=` | FTS5 search results (slug/title/snippet). |
 | GET | `/api/wiki/page/{slug}` | Page body + backlinks. |

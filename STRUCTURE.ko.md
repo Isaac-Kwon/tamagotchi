@@ -51,7 +51,7 @@ README.md 참고. 표와 필드는 실제 코드를 읽고 작성했다. PLAN.md
 
 | 모듈 | 역할 | 핵심 함수/클래스 |
 |---|---|---|
-| `journal.py` | 스텝 기록 JSONL append/tail(월별 로테이션) + 순수 파생 함수 `revealed_interest`. | `new_step_record`, `append_step`, `read_all`, `tail`, `revealed_interest` |
+| `journal.py` | 스텝 기록 JSONL append/tail(월별 로테이션) + 순수 파생 함수 `revealed_interest`·`stats`. | `new_step_record`, `append_step`, `read_all`, `tail`, `revealed_interest`, `stats` |
 | `state.py` | `state.json` 원자적 읽기/쓰기(tmp + `os.replace`) + 스텝 id 카운터. | `read_state`, `write_state`, `next_step_id`, `default_state` |
 | `inbox.py` | 관찰자 메시지 pending→delivered 큐. 웹은 append만 하고, 에이전트가 스텝 시작 시 원자적으로 drain. | `append_pending`, `drain`, `has_pending`, `peek_pending` |
 | `outbox.py` | 에이전트→관찰자 요청 채널. 에이전트가 요청을 append(`observer_request` 도구), 웹이 응답을 append. 상태는 두 append 전용 로그를 조인해 파생하고, 에이전트는 스텝 시작 시 커서(`seen.json`)로 새 응답을 drain하며 첨부를 `home/`으로 복사. | `append_request`, `list_requests`, `open_requests`, `append_resolution`, `drain_new_resolutions`, `OutboxStateError` |
@@ -154,6 +154,8 @@ data/
 | GET | `/api/reports` | 리포트가 존재하는 날짜 목록(최신순). |
 | GET | `/api/report/{date}` | 해당 날짜 리포트 본문. |
 | GET | `/api/revealed` | stated vs revealed 흥미 파생 지표 전체. |
+| GET | `/api/stats?timeline=N` | 통계 패널용 저널 전체 집계: 결정/행동/기분 분포, 흥미 히스토그램, 스텝 타임라인(최근 N개), 시간순 스레드 구간, 에러 수 + 최근 에러. |
+| GET | `/api/skills` | 에이전트가 만든 스킬 manifest(name/version/enabled/failures) + `auto_disable_after_failures` 임계값. |
 | GET | `/api/wiki/pages` | 전체 위키 페이지 목록(slug/title/updated). |
 | GET | `/api/wiki/search?q=` | FTS5 검색 결과(slug/title/snippet). |
 | GET | `/api/wiki/page/{slug}` | 페이지 본문 + 백링크. |
