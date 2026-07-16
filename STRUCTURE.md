@@ -162,6 +162,7 @@ own (`journal/ notes/ home/ inbox/ outbox/ chat/`) every
 | GET | `/api/revealed` | All stated-vs-revealed interest derived metrics. |
 | GET | `/api/stats?timeline=N` | Journal-wide aggregates for the stats panel: decision/action/mood distributions, interest histogram, per-step timeline (last N), chronological thread segments, error count + recent errors. |
 | GET | `/api/skills` | Self-authored skill manifests (name/version/enabled/failures) + the `auto_disable_after_failures` threshold. |
+| GET | `/api/config` | Read-only display config for the settings popover: `heartbeat_minutes`, `mode`, `model`, `sse_check_ms`, `skill_auto_disable_failures` (safe fields only — no secrets). |
 | GET | `/api/wiki/pages` | Full wiki page list (slug/title/updated). |
 | GET | `/api/wiki/search?q=` | FTS5 search results (slug/title/snippet). |
 | GET | `/api/wiki/page/{slug}` | Page body + backlinks. |

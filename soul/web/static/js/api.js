@@ -13,6 +13,7 @@
 //   GET  /api/revealed
 //   GET  /api/stats?timeline=N
 //   GET  /api/skills
+//   GET  /api/config
 //   GET  /api/wiki/pages
 //   GET  /api/wiki/search?q=
 //   GET  /api/wiki/page/{slug}
@@ -234,6 +235,9 @@ async function mockFetch(path, opts) {
   }
   if (p === "/api/stats") return mockStats();
   if (p === "/api/skills") return { skills: MOCK_SKILLS, auto_disable_after_failures: 3 };
+  if (p === "/api/config") {
+    return { heartbeat_minutes: 30, mode: "heartbeat", model: "gpt-4o-mini", sse_check_ms: 1000, skill_auto_disable_failures: 3 };
+  }
   if (p === "/api/wiki/pages") return { pages: MOCK_WIKI_PAGES };
   if (p === "/api/wiki/search") {
     const q = url.searchParams.get("q") || "";
@@ -340,6 +344,7 @@ export const api = {
   getRevealed: () => get("/api/revealed"),
   getStats: (timeline = 250) => get(`/api/stats?timeline=${encodeURIComponent(timeline)}`),
   getSkills: () => get("/api/skills"),
+  getConfig: () => get("/api/config"),
 
   getWikiPages: () => get("/api/wiki/pages"),
   searchWiki: (q) => get(`/api/wiki/search?q=${encodeURIComponent(q || "")}`),

@@ -214,6 +214,18 @@ def build_router(cfg: Config, paths: DataPaths, chat_manager: ChatManager) -> AP
             "auto_disable_after_failures": cfg.skills.auto_disable_after_failures,
         }
 
+    # -- config (read-only display fields for the settings popover) ---------#
+    @router.get("/api/config")
+    def get_config() -> dict[str, Any]:
+        # Safe display fields only — never secrets (api_key, allowed_networks).
+        return {
+            "heartbeat_minutes": cfg.agent.heartbeat_minutes,
+            "mode": cfg.agent.mode,
+            "model": cfg.llm.model,
+            "sse_check_ms": cfg.web.sse_check_ms,
+            "skill_auto_disable_failures": cfg.skills.auto_disable_after_failures,
+        }
+
     # -- wiki -------------------------------------------------------------- #
     @router.get("/api/wiki/pages")
     def get_wiki_pages() -> dict[str, Any]:

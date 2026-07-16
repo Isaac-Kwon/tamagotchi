@@ -560,6 +560,21 @@ def test_get_stats_timeline_param(client):
     assert body["timeline"][0]["id"] == "step-000002"
 
 
+def test_get_config(client):
+    r = client.get("/api/config")
+    assert r.status_code == 200
+    body = r.json()
+    assert set(body) == {
+        "heartbeat_minutes", "mode", "model",
+        "sse_check_ms", "skill_auto_disable_failures",
+    }
+    assert body["mode"] in ("heartbeat", "continuous")
+    assert body["skill_auto_disable_failures"] == 3
+    # Secrets must never leak through this display endpoint.
+    assert "api_key" not in body
+    assert "allowed_networks" not in body
+
+
 def test_get_skills_empty(client):
     r = client.get("/api/skills")
     assert r.status_code == 200
