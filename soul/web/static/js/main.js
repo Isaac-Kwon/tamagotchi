@@ -255,6 +255,35 @@ async function loadConfig() {
 // --------------------------------------------------------------------------- #
 // topbar + status card renderers (fed from state + client-side stale judgment)
 // --------------------------------------------------------------------------- #
+// Next-wake text, to the second ("다음 활동 14:30:05 · 4분 12초 후"). Split out
+// from renderTopbar so a dedicated 1s ticker can refresh just this span
+// without re-running the full render (Phaser applyState, status card, ...).
+function renderNextWake(state, isStale) {
+  const nw = document.getElementById("next-wake");
+  if (!nw) return;
+  if (isStale) {
+    nw.textContent = "다음 활동: 알 수 없음";
+    return;
+  }
+  const d = state && state.next_wake_at ? new Date(state.next_wake_at) : null;
+  if (!d || isNaN(d.getTime())) {
+    nw.textContent = "";
+    return;
+  }
+  const p = (x) => String(x).padStart(2, "0");
+  const hms = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  const diffSec = Math.round((d.getTime() - Date.now()) / 1000);
+  let rel;
+  if (diffSec <= 0) rel = "곧";
+  else if (diffSec < 60) rel = `${diffSec}초 후`;
+  else {
+    const m = Math.floor(diffSec / 60);
+    const s = diffSec % 60;
+    rel = s ? `${m}분 ${s}초 후` : `${m}분 후`;
+  }
+  nw.textContent = `다음 활동 ${hms} · ${rel}`;
+}
+
 function renderTopbar(state, isStale, transport) {
   const chip = document.getElementById("status-chip");
   const dot = document.getElementById("status-dot");
@@ -288,23 +317,7 @@ function renderTopbar(state, isStale, transport) {
     }
   }
 
-  const nw = document.getElementById("next-wake");
-  if (nw) {
-    if (isStale) {
-      nw.textContent = "다음 활동: 알 수 없음";
-    } else if (state && state.next_wake_at) {
-      const d = new Date(state.next_wake_at);
-      if (!isNaN(d.getTime())) {
-        const hhmm = d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
-        const mins = Math.max(1, Math.round((d.getTime() - Date.now()) / 60000));
-        nw.textContent = `다음 활동 ${hhmm} · ${mins}분 후`;
-      } else {
-        nw.textContent = "";
-      }
-    } else {
-      nw.textContent = "";
-    }
-  }
+  renderNextWake(state, isStale);
 
   const cd = document.getElementById("conn-dot");
   const cl = document.getElementById("conn-label");
@@ -471,13 +484,19 @@ function boot() {
 
     // SSE only fires on state.json changes: a dead agent loop stops producing
     // events, so staleness must be re-judged on a timer to ever flip the UI.
-    // The 10s tick also refreshes the next-wake countdown.
     const staleTimer = setInterval(() => {
       if (latestState) render();
     }, 10000);
 
+    // The next-wake countdown shows seconds, so it ticks on its own 1s timer
+    // that touches only that span — not the full render.
+    const nextWakeTimer = setInterval(() => {
+      if (latestState) renderNextWake(latestState, computeStale(latestState));
+    }, 1000);
+
     window.addEventListener("beforeunload", () => {
       clearInterval(staleTimer);
+      clearInterval(nextWakeTimer);
       unsubscribe();
     });
 
