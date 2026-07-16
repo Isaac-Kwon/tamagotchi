@@ -53,6 +53,7 @@ class AgentConfig:
     serendipity_rate: float = 0.3
     soul_max_chars: int = 8000
     consecutive_error_backoff: int = 5
+    autosave_every_steps: int = 20  # commit journal/notes every N steps; 0 disables
 
 
 @dataclass
@@ -200,6 +201,8 @@ def _validate(cfg: Config) -> None:
         raise ConfigError("agent.context_recent_steps must be >= 0.")
     if cfg.agent.soul_max_chars <= 0:
         raise ConfigError("agent.soul_max_chars must be > 0.")
+    if cfg.agent.autosave_every_steps < 0:
+        raise ConfigError("agent.autosave_every_steps must be >= 0.")
     if cfg.llm.max_retries < 1:
         raise ConfigError("llm.max_retries must be >= 1.")
     if cfg.llm.timeout_seconds <= 0:

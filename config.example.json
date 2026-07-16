@@ -19,7 +19,8 @@
     "context_recent_steps": 10,
     "serendipity_rate": 0.3,
     "soul_max_chars": 8000,
-    "consecutive_error_backoff": 5
+    "consecutive_error_backoff": 5,
+    "autosave_every_steps": 20
   },
   "chat": {
     "record_default": false,

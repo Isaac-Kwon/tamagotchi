@@ -6,6 +6,7 @@ Shape (spec P5)::
         check_preempt()      # crash-recovery of a leftover paused step
         check_report()       # idempotent daily report, between every step
         run_step()           # one wake step (never killed for running long)
+        maybe_autosave()     # commit journal/notes every N steps (safety net)
         wait()               # until the next start time
 
 **Long-step policy (spec P5).** A step that outruns the heartbeat is normal and
@@ -34,7 +35,7 @@ from typing import Any, Callable
 from ..config import Config
 from ..paths import DataPaths
 from ..storage import state as state_store
-from . import loop as loop_mod
+from . import autosave, loop as loop_mod
 from . import preempt, report
 from .preempt import StepController
 
@@ -138,6 +139,13 @@ def run_scheduler(
         except Exception as exc:  # noqa: BLE001 — a crashed step must not kill the loop.
             record = {"kind": "error", "error": {"message": str(exc), "llm_failure": True}}
         end = monotonic()
+
+        # Autosave: commit accumulated journal/notes every N steps — the
+        # safety net between daily reports (0 disables).
+        try:
+            autosave.maybe_autosave(paths, record, cfg.agent.autosave_every_steps)
+        except Exception:  # noqa: BLE001 — history saving must not crash the loop.
+            pass
 
         failed = is_llm_failure(record)
         breaker.observe(failed)
