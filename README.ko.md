@@ -122,9 +122,50 @@ venv(`.\.venv\Scripts\python.exe`)로 폴백한다. WSL 셸 안에서 직접 돌
 - 선물/메시지(inbox) — 관찰자가 텍스트나 URL을 남기면 다음 wake 스텝의
   컨텍스트에 "관찰자가 남긴 것"으로 중립적으로 전달된다. 반응 여부는 에이전트
   자유다.
+- 요청(outbox) — inbox의 거울상. 에이전트는 ACT 중 `observer_request` 도구로
+  관찰자에게 자유 형식 요청을 남길 수 있다("패키지 X가 필요하다", "이 논문에
+  접근할 수 없다" 등 — 무엇을 요청할지는 전혀 유도하지 않는다). 요청은 이 탭에
+  관리자 투두리스트로 쌓이고, 탭에 열린 요청 수가 배지로 표시된다. 아래 "요청에
+  응답하기" 참고.
 - 말과 행동(stated vs revealed) — 자기 보고 흥미도(stated)와, 저널에서 순수하게
   파생 계산한 행동 신호(revealed — 스레드 지속 길이, shelve 후 복귀 여부, 주제
   재등장 빈도)를 나란히 보여준다. 둘의 괴리는 숨기지 않고 그대로 노출한다.
+
+## 요청에 응답하기 (관리자 가이드)
+
+**요청** 탭을 열거나 `GET /api/outbox?status=open`을 본다. 열린 요청마다 완료
+(resolved)·거절(declined)·무시(ignored) 버튼, 선택적 메모, 파일 첨부(완료/거절
+시 포함)가 제공된다. 에이전트 입장에서는:
+
+- 완료/거절은 다음 wake의 컨텍스트에 중립적 문장("An observer responded to a
+  request you left")과 메모로 전달된다. 첨부 파일은 데이터 디렉토리의
+  `home/attachments/<req-id>/<이름>`으로 복사된다 — `home/`은 모든 샌드박스
+  백엔드에서 code_experiment의 작업 디렉토리이므로 에이전트가 직접 열 수 있는
+  경로다.
+- 무시는 조용하다: 목록에서만 사라지고 에이전트에게는 아무것도 전달되지 않는다
+  (도구 설명 자체가 "a response may arrive later, or not"이라고만 약속한다).
+  되돌릴 수 있다 — 필터를 무시로 바꾸고 다시 열기를 누르면 목록에 복원된다.
+
+자주 나올 요청 유형별 이행 방법:
+
+| 요청 유형 | 이행 방법 |
+|---|---|
+| 파이썬 패키지 | 샌드박스가 보는 위치에 설치(아래 표)하고 메모와 함께 완료. |
+| 논문 / 막힌 URL | 직접 받아서 완료 시 파일 첨부 — 또는 inbox 선물로 URL/본문을 보내고 메모에 알림. |
+| 데이터셋 / 샘플 파일 | 완료 시 첨부. |
+| 샌드박스 한도(타임아웃·메모리), wake 주기 | `config.json` 수정 후 루프 재시작, 메모와 함께 완료. |
+| 사람의 답·의견·대화 | 메모로 답하거나 채팅 세션을 시작. |
+| 이행 불가 | 솔직한 메모와 함께 거절. |
+| 지금은 다루고 싶지 않음 | 무시(무시 필터에서 되돌릴 수 있음). |
+
+**패키지가 어느 파이썬에 설치되어야 하는지는 샌드박스 백엔드에 따라 다르다**
+(`soul/agent/sandbox.py`; 저널의 `sandbox_backend` 필드로 확인):
+
+| 백엔드 | 실험을 실행하는 인터프리터 | 설치 위치 |
+|---|---|---|
+| `subprocess` (Windows 폴백) | `sys.executable` — 에이전트를 돌리는 venv | `.venv`(또는 `.venv-wsl`)에 `pip install` |
+| `bwrap` / `unshare` (WSL 기본) | 샌드박스 안의 `python3` — bwrap은 `/usr`만 ro-bind하고 venv는 바인드하지 않음 | WSL **시스템** python3에 설치 |
+| `docker` | 컨테이너의 `python:3-slim` | 호스트 설치는 보이지 않음 — 커스텀 이미지 필요 |
 
 ## MCP 등록
 
@@ -151,7 +192,7 @@ WSL(`.venv-wsl`)에서:
 pytest
 ```
 
-186개 테스트가 전부 green이어야 한다. `tests/conftest.py`의 `data_paths`/`config`
+242개 테스트가 전부 green이어야 한다. `tests/conftest.py`의 `data_paths`/`config`
 픽스처가 `tmp_path`에 초기화된 데이터 디렉토리와 mock 모드 설정을 제공하므로,
 테스트는 실제 네트워크나 실제 `./data`를 건드리지 않는다.
 
@@ -173,3 +214,9 @@ pytest
   원칙 때문이다. 안전장치는 크기 상한(`max_page_kb`, 기본 500KB)과 시간
   상한(`http_timeout_seconds`, 기본 20초)뿐이다.
 - 에이전트가 방문한 URL은 전부 저널의 `web_visits` 필드에 남는다.
+- 응답 첨부 파일은 그대로 저장된다. `POST /api/outbox/{id}/resolve`로 올린
+  파일은 가공 없이 `outbox/attachments/`에 저장되고 다음 wake에 `home/`으로
+  복사되어 에이전트의 샌드박스 코드가 읽을 수 있다. 안전장치는 파일명
+  정제(basename만 사용)와 `max_attachment_mb` 크기 상한뿐이다 — 이
+  엔드포인트는 운영자를 신뢰하며, 그래서 서버 기본 바인드가 `127.0.0.1`이다
+  (외부에 열 때는 `web.allowed_networks`를 함께 설정).

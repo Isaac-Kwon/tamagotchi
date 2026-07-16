@@ -32,7 +32,7 @@ README.md 참고. 표와 필드는 실제 코드를 읽고 작성했다. PLAN.md
 |---|---|---|
 | `loop.py` | wake 스텝 오케스트레이션의 중심: 회상 → ACT(도구 루프) → 저장 → REFLECT → 저널/state 갱신 → soul_update 시 커밋. JSON 파싱 3단계 폴백. | `run_step`, `_run_step_body`, `_parse_with_fallback`, `_record_error` |
 | `scheduler.py` | heartbeat/continuous 모드 장기 루프 + 서킷브레이커 + `next_wake_at` 계산 + 주기적 autosave. | `run_scheduler`, `compute_wait`, `CircuitBreaker`, `is_llm_failure` |
-| `autosave.py` | 누적 히스토리(journal/notes/home/inbox/chat)를 `agent.autosave_every_steps` 스텝마다 data repo에 커밋 — 일일 리포트 사이의 안전망. | `maybe_autosave`, `is_due`, `AUTOSAVE_PATHS` |
+| `autosave.py` | 누적 히스토리(journal/notes/home/inbox/outbox/chat)를 `agent.autosave_every_steps` 스텝마다 data repo에 커밋 — 일일 리포트 사이의 안전망. | `maybe_autosave`, `is_due`, `AUTOSAVE_PATHS` |
 | `preempt.py` | 대화 선점: LLM 호출 경계마다 `control/chat.json` 확인, 스텝 타임아웃 데드라인 검사, 스냅샷 저장/복원, 크래시 복구. | `StepController`, `StepTimeout`, `recover_paused_step` |
 | `llm.py` | OpenAI 호환 chat-completions 클라이언트(재시도/백오프/타임아웃) + 트랜스크립트 기록 + 도구 사용 루프. | `LLMClient`, `LLMResponse`, `TranscriptRecorder`, `run_tool_loop` |
 | `fake_llm.py` | 테스트/`--mock`용 `LLMClient` 대체. 큐에 넣은 응답을 순서대로 반환(dict/str/`LLMResponse`/예외). | `FakeLLM` |
@@ -42,7 +42,7 @@ README.md 참고. 표와 필드는 실제 코드를 읽고 작성했다. PLAN.md
 | `skills.py` | 자작 스킬 등록/수명주기: 이름·코드 정적 검증(표준 라이브러리만 허용), manifest 관리, 실패 카운트/자동 비활성화, 데이터 git 커밋. | `create_skill`, `check_imports`, `has_run`, `record_success`, `record_failure`, `drain_notices` |
 | `skill_runner.py` | 스킬을 별도 subprocess로 실행하는 러너(샌드박스 사다리 경유). 스킬 코드는 절대 import되지 않음. | `run_skill`, `SkillRunResult` |
 | `sandbox.py` | 격리 백엔드 사다리: bwrap → unshare → Docker → plain subprocess. `code_experiment`와 스킬 실행이 공용. | `select_backend`, `run_python`, `backend_is_isolated`, `describe_backend` |
-| `context.py` | 회상 컨텍스트 조립: SOUL.md + 최근 N스텝 + 현재 스레드 + 세렌디피티 노트 + inbox + 스킬 알림. | `assemble_context`, `RecallContext`, `ThreadInfo`, `_pick_serendipity_note` |
+| `context.py` | 회상 컨텍스트 조립: SOUL.md + 최근 N스텝 + 현재 스레드 + 세렌디피티 노트 + inbox + 응답된 관찰자 요청 + 스킬 알림. | `assemble_context`, `RecallContext`, `ThreadInfo`, `_pick_serendipity_note` |
 | `soul.py` | SOUL.md 읽기/쓰기 + 데이터 git 커밋. SOUL.md를 쓰는 유일한 모듈. | `read_soul`, `write_soul`, `SoulWriteError` |
 | `report.py` | 매일 정해진 시각·타임존에 1인칭 회고를 한국어(설정 가능)로 생성. 날짜 파일 존재 여부로 판정하는 멱등 동작. | `generate_report`, `check_report`, `is_due`, `build_report_messages` |
 | `lock.py` | `agent.lock` — pid+timestamp 락. 죽은 프로세스의 stale 락은 탈취(POSIX `os.kill`/Windows `OpenProcess`). | `AgentLock`, `LockError` |
@@ -54,6 +54,8 @@ README.md 참고. 표와 필드는 실제 코드를 읽고 작성했다. PLAN.md
 | `journal.py` | 스텝 기록 JSONL append/tail(월별 로테이션) + 순수 파생 함수 `revealed_interest`. | `new_step_record`, `append_step`, `read_all`, `tail`, `revealed_interest` |
 | `state.py` | `state.json` 원자적 읽기/쓰기(tmp + `os.replace`) + 스텝 id 카운터. | `read_state`, `write_state`, `next_step_id`, `default_state` |
 | `inbox.py` | 관찰자 메시지 pending→delivered 큐. 웹은 append만 하고, 에이전트가 스텝 시작 시 원자적으로 drain. | `append_pending`, `drain`, `has_pending`, `peek_pending` |
+| `outbox.py` | 에이전트→관찰자 요청 채널. 에이전트가 요청을 append(`observer_request` 도구), 웹이 응답을 append. 상태는 두 append 전용 로그를 조인해 파생하고, 에이전트는 스텝 시작 시 커서(`seen.json`)로 새 응답을 drain하며 첨부를 `home/`으로 복사. | `append_request`, `list_requests`, `open_requests`, `append_resolution`, `drain_new_resolutions`, `OutboxStateError` |
+| `locks.py` | inbox와 outbox가 공유하는 `O_CREAT\|O_EXCL` 어드바이저리 파일 락(타임아웃 5초, 30초 지난 락은 탈취). | `AdvisoryFileLock` |
 | `control.py` | 프로세스 간 신호 파일: `control/chat.json`(선점 버스), `control/paused_step.json`(스냅샷). | `read_chat`, `set_chat_active`, `set_chat_inactive`, `chat_is_active`, `write_paused_step`, `read_paused_step`, `clear_paused_step` |
 
 ### `soul/knowledge/` — 지식 위키 + MCP
@@ -61,7 +63,7 @@ README.md 참고. 표와 필드는 실제 코드를 읽고 작성했다. PLAN.md
 | 모듈 | 역할 | 핵심 함수/클래스 |
 |---|---|---|
 | `wiki.py` | 위키 원본(md) CRUD + `[[링크]]` 파싱 + SQLite FTS5 인덱스(파생, 항상 재빌드 가능) + git 커밋. | `write_page`, `read_page`, `search`, `graph`, `backlinks`, `rebuild_index`, `ensure_index` |
-| `tools.py` | ACT 도구 루프용 function-calling 스키마 + 디스패처(위키/웹/스킬 도구 통합). | `act_tools`, `dispatch`, `WIKI_TOOLS`, `WEB_TOOLS`, `SKILL_TOOLS` |
+| `tools.py` | ACT 도구 루프용 function-calling 스키마 + 디스패처(위키/웹/스킬/관찰자 요청 도구 통합). | `act_tools`, `dispatch`, `WIKI_TOOLS`, `WEB_TOOLS`, `SKILL_TOOLS`, `OUTBOX_TOOLS` |
 | `mcp_server.py` | 읽기 전용 MCP 서버(`mcp` SDK, stdio). SQLite도 `mode=ro`로만 연결. | `build_server`, `serve_stdio`, `wiki_search`, `wiki_read`, `wiki_list`, `read_soul`, `query_journal`, `read_report`, `read_transcript` |
 
 ### `soul/web/` — API 서버 + 정적 클라이언트
@@ -71,7 +73,7 @@ README.md 참고. 표와 필드는 실제 코드를 읽고 작성했다. PLAN.md
 | `server.py` | FastAPI 앱 팩토리 + 정적 파일 마운트. UI 로직 없음. 라우트는 전부 `api.py`에 있음. | `create_app` |
 | `api.py` | REST + SSE 라우트 전체(아래 표). 데이터 디렉토리에 대해 원칙적으로 read-only. | `build_router`, `state_snapshot` |
 | `events.py` | `state.json` mtime을 감시해 SSE로 상태 push. | `state_event_stream` |
-| `chat.py` | 대화 세션(인메모리) + LLM 직접 호출 + 선점 신호 발행 + 기록 토글. API 서버가 수행하는 두 가지 실제 쓰기 중 하나. | `ChatManager`, `ChatSession`, `build_chat_messages` |
+| `chat.py` | 대화 세션(인메모리) + LLM 직접 호출 + 선점 신호 발행 + 기록 토글. API 서버에 허용된 네 가지 쓰기 중 하나. | `ChatManager`, `ChatSession`, `build_chat_messages` |
 | `chatlog.py` | `record=true`인 대화만 `chat/recorded.jsonl`에 append. | `append_turn`, `read_all` |
 | `gitview.py` | SOUL.md의 git 로그/커밋별 diff를 읽기 전용으로 노출. 영혼의 성장 이력. | `soul_history`, `soul_diff`, `soul_updated_at` |
 | `static/` | Phaser 3(CDN) 기반 웹 클라이언트. API의 여러 클라이언트 중 하나. 모바일 앱 등 다른 클라이언트도 같은 API 사용 가능. | `index.html`, `js/{main,api,room_scene,mapping,panels}.js` |
@@ -85,16 +87,20 @@ DESIGN.md의 "계획과 실제 구현이 갈라진 지점" 참고.
 ### `tests/` (이름/범위만)
 
 `conftest.py`가 `data_paths`(임시 초기화된 데이터 디렉토리)와 `config`(mock
-모드 설정) 픽스처를 제공한다. 186개 테스트가 다음을 모듈별로 검증한다: 설정
+모드 설정) 픽스처를 제공한다. 242개 테스트가 다음을 모듈별로 검증한다: 설정
 로딩(`test_config.py`), 경로/데이터 디렉토리 초기화(`test_paths.py`), 저장
-계층(`test_storage.py`, `test_inbox.py`), 락(`test_lock.py`), LLM 클라이언트
-(`test_llm.py`), wake 루프(`test_loop.py`, `test_loop_m2m3.py`), 프롬프트
+계층(`test_storage.py`, `test_inbox.py`, `test_outbox.py`),
+락(`test_lock.py`), LLM 클라이언트
+(`test_llm.py`), wake 루프(`test_loop.py`, `test_loop_m2m3.py`,
+`test_loop_outbox.py`), 프롬프트
 정규화(`test_prompts.py`), 웹 도구(`test_webtools.py`), 오프라인 행동 확장
 (`test_actions_m2.py`), 세렌디피티(`test_context_serendipity.py`), revealed
 interest(`test_revealed.py`), 샌드박스(`test_sandbox.py`), 도구 사용 루프
-(`test_tools_loop.py`), 위키(`test_wiki.py`), 선점(`test_preempt.py`), 리포트
-(`test_report.py`), 스케줄러(`test_scheduler.py`), 웹 API(`test_web_api.py`),
-MCP 서버(`test_mcp_server.py`), 스킬(`test_skills_m8.py`).
+(`test_tools_loop.py`), 관찰자 요청 도구(`test_outbox_tool.py`),
+autosave(`test_autosave.py`), 위키(`test_wiki.py`), 선점(`test_preempt.py`),
+리포트(`test_report.py`), 스케줄러(`test_scheduler.py`), 웹
+API(`test_web_api.py`), MCP 서버(`test_mcp_server.py`),
+스킬(`test_skills_m8.py`).
 
 ## 데이터 디렉토리 (`data/`, 기본 `./data`, 소스 저장소와 별도 git repo)
 
@@ -111,10 +117,14 @@ data/
 ├── index/wiki.sqlite3         # 위키 FTS5+링크 그래프 파생 인덱스. 커밋 안 함(재빌드 가능).
 ├── skills/<name>/manifest.json, skill.py  # 자작 스킬. 커밋됨(skills.py).
 ├── sandbox/                   # 스킬 실행용 일회성 스크래치. 커밋 안 함.
-├── home/                      # code_experiment의 영속 작업 디렉토리(cwd). 상대경로로 쓴 파일이 스텝 간 유지됨. sandbox와 달리 .gitignore 대상은 아니지만 커밋 루틴이 없어 커밋되지 않음.
+├── home/                      # code_experiment의 영속 작업 디렉토리(cwd). 상대경로로 쓴 파일이 스텝 간 유지되고, 응답된 outbox 첨부가 home/attachments/<req-id>/로 복사됨. 주기 커밋됨(autosave.py).
 ├── reports/YYYY-MM-DD.md      # 일일 회고. 커밋됨(report.py).
-├── inbox/{pending,delivered}.jsonl, inbox.lock  # 관찰자 메시지 큐. .gitignore 대상 아님. 어떤 커밋 루틴도 add하지 않아 커밋되지 않은 채 남음.
-├── chat/recorded.jsonl        # record=true인 대화만. inbox와 같은 이유로 커밋되지 않음.
+├── inbox/{pending,delivered}.jsonl, inbox.lock  # 관찰자 메시지 큐. 주기 커밋됨(autosave.py).
+├── outbox/requests.jsonl      # 에이전트→관찰자 요청(에이전트가 observer_request 도구로 append). 주기 커밋됨(autosave.py).
+├── outbox/resolutions.jsonl   # 관찰자 응답(웹이 append; resolved/declined/ignored/reopened). 같은 autosave 대상.
+├── outbox/attachments/<req-id>/<file>  # 관찰자가 응답 시 첨부한 파일(웹, 생성만).
+├── outbox/seen.json, outbox.lock  # 에이전트 쪽 응답 커서 + 어드바이저리 락.
+├── chat/recorded.jsonl        # record=true인 대화만. 주기 커밋됨(autosave.py).
 ├── transcripts/<step_id>.jsonl  # 스텝별 LLM 왕복 전문. 커밋 안 함(용량/잡음).
 ├── control/chat.json, paused_step.json  # 프로세스 간 신호. 커밋 안 함.
 └── logs/agent.log             # 운영 로그. 커밋 안 함.
@@ -122,13 +132,12 @@ data/
 
 커밋 대상 정리. `paths.py:DATA_GITIGNORE`가 명시적으로 배제하는 목록은
 `state.json`, `index/`, `control/`, `logs/`, `agent.lock`, `sandbox/`,
-`transcripts/`다. SOUL.md, `notes/`, `wiki/`, `skills/`, `reports/`,
-`journal/`은 gitignore 대상이 아니지만, 커밋을 실행하는 코드는 각자 정해진
+`transcripts/`다. 나머지는 전부 커밋되지만, 커밋을 실행하는 코드는 각자 정해진
 대상만 add한다. `soul.py`는 SOUL.md만, `wiki.py`는 해당 페이지 md만,
 `skills.py`는 해당 스킬 디렉토리만 커밋하고, `report.py`는 하루 1회
-`reports/ journal/ notes/`를 함께 커밋한다. `inbox/`와 `chat/`은 gitignore
-대상도, 어떤 커밋 루틴의 대상도 아니어서 데이터 git 저장소 안에 커밋되지
-않은 워킹 파일로 남는다(git 관점에서는 untracked).
+`reports/ journal/ notes/`를 함께 커밋하며, 나머지 누적 히스토리
+(`journal/ notes/ home/ inbox/ outbox/ chat/`)는 `autosave.py`가
+`agent.autosave_every_steps` 스텝마다 쓸어 담는다.
 
 ## API 엔드포인트 (`soul/web/api.py:build_router`)
 
@@ -153,6 +162,8 @@ data/
 | POST | `/api/chat/end` | 대화 세션 종료. 선점 신호 해제. |
 | GET | `/api/chat/{session_id}` | 세션의 턴 목록 + record 플래그. |
 | POST | `/api/inbox` (202) | 관찰자 메시지/선물을 pending 큐에 추가. |
+| GET | `/api/outbox?status=` | 에이전트가 관찰자에게 남긴 요청 목록(최신순, 파생 status: `open`\|`resolved`\|`declined`\|`ignored`, 필터 선택). |
+| POST | `/api/outbox/{id}/resolve` | multipart form(`status`, 선택 `note`, 선택 `file` — 파일은 resolved/declined일 때만). 응답 레코드 append. 404 미존재, 409 잘못된 전이, 413 파일 초과, 422 잘못된 status. API 서버의 네 번째 허용 쓰기. |
 
 ## 저널 스텝 레코드 필드 (`soul/storage/journal.py:new_step_record`)
 
@@ -181,6 +192,8 @@ data/
 | `sandbox_backend` | str\|null | `bwrap`\|`unshare`\|`docker`\|`subprocess`\|null. |
 | `preempted` | bool | 이 스텝이 대화 선점으로 중단됐는지. |
 | `inbox_delivered` | list[str] | 이 스텝에서 전달된 inbox 메시지 id 목록. |
+| `observer_requests` | list[str] | 이 스텝에서 에이전트가 남긴 요청 id 목록(`observer_request` 도구). |
+| `observer_resolved` | list[str] | 이 스텝 컨텍스트에 응답이 전달된 요청 id 목록. |
 | `llm` | dict | `{model, tokens_in, tokens_out, latency_ms}`. ACT+REFLECT 합산. |
 | `error` | dict\|null | `{"phase", "message", "llm_failure"}` — `kind:"error"`일 때. |
 
@@ -213,7 +226,7 @@ data/
 | `serendipity_rate` | `0.3` | 과거 노트 무작위 재부상 확률. |
 | `soul_max_chars` | `8000` | SOUL.md 쓰기 허용 최대 글자 수. |
 | `consecutive_error_backoff` | `5` | 이 횟수 연속 LLM 실패 시 서킷브레이커 발동. |
-| `autosave_every_steps` | `20` | N스텝마다 journal/notes/home/inbox/chat을 data repo에 커밋(`autosave @ <step_id>`) — 일일 리포트가 아직 없어도 히스토리를 보존한다. `0`이면 비활성. |
+| `autosave_every_steps` | `20` | N스텝마다 journal/notes/home/inbox/outbox/chat을 data repo에 커밋(`autosave @ <step_id>`) — 일일 리포트가 아직 없어도 히스토리를 보존한다. `0`이면 비활성. |
 
 ### `chat`
 
@@ -247,6 +260,14 @@ data/
 | `enabled` | `true` | `web_explore`/웹 도구 노출 여부. |
 | `http_timeout_seconds` | `20` | 웹 요청 타임아웃. |
 | `max_page_kb` | `500` | `web_read` 최대 수신 바이트(KB). |
+
+### `observer_requests`
+
+| 키 | 기본값 | 의미 |
+|---|---|---|
+| `enabled` | `true` | ACT에 `observer_request` 도구를 노출할지. 꺼도 이미 남은 요청의 응답은 에이전트에게 전달된다. |
+| `max_open` | `5` | 동시에 열려 있을 수 있는 요청 수. 상한에 도달하면 도구가 중립적 에러 문자열을 반환한다. 거절/무시된 요청은 슬롯을 비운다. |
+| `max_attachment_mb` | `20` | resolve 첨부 파일 크기 상한(초과 시 413). |
 
 ### `knowledge`
 

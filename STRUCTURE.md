@@ -33,7 +33,7 @@ and fields were written from reading the actual code; wherever it differs from
 |---|---|---|
 | `loop.py` | Wake-step orchestration (the heart): recall → ACT (tool loop) → save → REFLECT → journal/state update → commit on soul_update. Three-stage JSON fallback. | `run_step`, `_run_step_body`, `_parse_with_fallback`, `_record_error` |
 | `scheduler.py` | Long-running loop for heartbeat/continuous modes + circuit breaker + `next_wake_at` computation + periodic autosave. | `run_scheduler`, `compute_wait`, `CircuitBreaker`, `is_llm_failure` |
-| `autosave.py` | Periodic data-repo commit of accumulating history (journal/notes/home/inbox/chat) every `agent.autosave_every_steps` steps — the safety net between daily reports. | `maybe_autosave`, `is_due`, `AUTOSAVE_PATHS` |
+| `autosave.py` | Periodic data-repo commit of accumulating history (journal/notes/home/inbox/outbox/chat) every `agent.autosave_every_steps` steps — the safety net between daily reports. | `maybe_autosave`, `is_due`, `AUTOSAVE_PATHS` |
 | `preempt.py` | Chat preemption: checks `control/chat.json` at every LLM call boundary, enforces the step timeout deadline, saves/restores snapshots, recovers from crashes. | `StepController`, `StepTimeout`, `recover_paused_step` |
 | `llm.py` | OpenAI-compatible chat-completions client (retry/backoff/timeout) + transcript recording + tool-use loop. | `LLMClient`, `LLMResponse`, `TranscriptRecorder`, `run_tool_loop` |
 | `fake_llm.py` | `LLMClient` stand-in for tests/`--mock`. Returns queued responses in order (dict/str/`LLMResponse`/exception). | `FakeLLM` |
@@ -43,7 +43,7 @@ and fields were written from reading the actual code; wherever it differs from
 | `skills.py` | Self-authored skill registration/lifecycle: static validation of name/code (standard library only), manifest management, failure counting/auto-disable, data git commits. | `create_skill`, `check_imports`, `has_run`, `record_success`, `record_failure`, `drain_notices` |
 | `skill_runner.py` | Runner that executes skills in a separate subprocess (via the sandbox ladder). Skill code is never imported. | `run_skill`, `SkillRunResult` |
 | `sandbox.py` | Isolation backend ladder: bwrap → unshare → Docker → plain subprocess. Shared by `code_experiment` and skill execution. | `select_backend`, `run_python`, `backend_is_isolated`, `describe_backend` |
-| `context.py` | Recall context assembly: SOUL.md + last N steps + current thread + serendipity note + inbox + skill notices. | `assemble_context`, `RecallContext`, `ThreadInfo`, `_pick_serendipity_note` |
+| `context.py` | Recall context assembly: SOUL.md + last N steps + current thread + serendipity note + inbox + resolved observer requests + skill notices. | `assemble_context`, `RecallContext`, `ThreadInfo`, `_pick_serendipity_note` |
 | `soul.py` | Reads/writes SOUL.md + data git commits. **The only module that writes SOUL.md.** | `read_soul`, `write_soul`, `SoulWriteError` |
 | `report.py` | Generates a first-person retrospective in Korean (configurable) daily at a set time/timezone. Idempotent (judged by whether the date file exists). | `generate_report`, `check_report`, `is_due`, `build_report_messages` |
 | `lock.py` | `agent.lock` — pid+timestamp lock, steals stale locks from dead processes (POSIX `os.kill`/Windows `OpenProcess`). | `AgentLock`, `LockError` |
@@ -55,6 +55,8 @@ and fields were written from reading the actual code; wherever it differs from
 | `journal.py` | Step-record JSONL append/tail (monthly rotation) + the pure derived function `revealed_interest`. | `new_step_record`, `append_step`, `read_all`, `tail`, `revealed_interest` |
 | `state.py` | Atomic read/write of `state.json` (tmp + `os.replace`) + step id counter. | `read_state`, `write_state`, `next_step_id`, `default_state` |
 | `inbox.py` | Observer-message pending→delivered queue. The web only appends; the agent drains atomically at step start. | `append_pending`, `drain`, `has_pending`, `peek_pending` |
+| `outbox.py` | Agent→observer request channel. The agent appends requests (`observer_request` tool); the web appends resolutions; status is derived by joining the two append-only logs; the agent drains new resolutions at step start via a cursor (`seen.json`) and copies attachments into `home/`. | `append_request`, `list_requests`, `open_requests`, `append_resolution`, `drain_new_resolutions`, `OutboxStateError` |
+| `locks.py` | The `O_CREAT\|O_EXCL` advisory file lock shared by the inbox and outbox (5s timeout, 30s stale-steal). | `AdvisoryFileLock` |
 | `control.py` | Inter-process signal files: `control/chat.json` (preemption bus), `control/paused_step.json` (snapshot). | `read_chat`, `set_chat_active`, `set_chat_inactive`, `chat_is_active`, `write_paused_step`, `read_paused_step`, `clear_paused_step` |
 
 ### `soul/knowledge/` — knowledge wiki + MCP
@@ -62,7 +64,7 @@ and fields were written from reading the actual code; wherever it differs from
 | Module | Role | Key functions/classes |
 |---|---|---|
 | `wiki.py` | Wiki source (md) CRUD + `[[link]]` parsing + SQLite FTS5 index (derived, always rebuildable) + git commits. | `write_page`, `read_page`, `search`, `graph`, `backlinks`, `rebuild_index`, `ensure_index` |
-| `tools.py` | Function-calling schemas for the ACT tool loop + dispatcher (unifies wiki/web/skill tools). | `act_tools`, `dispatch`, `WIKI_TOOLS`, `WEB_TOOLS`, `SKILL_TOOLS` |
+| `tools.py` | Function-calling schemas for the ACT tool loop + dispatcher (unifies wiki/web/skill/observer-request tools). | `act_tools`, `dispatch`, `WIKI_TOOLS`, `WEB_TOOLS`, `SKILL_TOOLS`, `OUTBOX_TOOLS` |
 | `mcp_server.py` | Read-only MCP server (`mcp` SDK, stdio). SQLite is also connected only with `mode=ro`. | `build_server`, `serve_stdio`, `wiki_search`, `wiki_read`, `wiki_list`, `read_soul`, `query_journal`, `read_report`, `read_transcript` |
 
 ### `soul/web/` — API server + static client
@@ -72,7 +74,7 @@ and fields were written from reading the actual code; wherever it differs from
 | `server.py` | FastAPI app factory + static file mounting. No UI logic mixed in here (routes live entirely in `api.py`). | `create_app` |
 | `api.py` | All REST + SSE routes (table below). Read-only toward the data directory as a rule. | `build_router`, `state_snapshot` |
 | `events.py` | Watches `state.json` mtime and pushes state over SSE. | `state_event_stream` |
-| `chat.py` | Chat sessions (in-memory) + direct LLM calls + preemption signal emission + recording toggle. One of the only two real writes the API server performs. | `ChatManager`, `ChatSession`, `build_chat_messages` |
+| `chat.py` | Chat sessions (in-memory) + direct LLM calls + preemption signal emission + recording toggle. One of the API server's four allowed writes. | `ChatManager`, `ChatSession`, `build_chat_messages` |
 | `chatlog.py` | Appends only `record=true` conversations to `chat/recorded.jsonl`. | `append_turn`, `read_all` |
 | `gitview.py` | Exposes SOUL.md's git log/per-commit diffs read-only ("the soul's growth history"). | `soul_history`, `soul_diff`, `soul_updated_at` |
 | `static/` | Phaser 3 (CDN) based web client. Just one client of the API (other clients such as mobile apps can use the same API). | `index.html`, `js/{main,api,room_scene,mapping,panels}.js` |
@@ -87,15 +89,19 @@ actual implementation diverged").
 ### `tests/` (names/scope only)
 
 `conftest.py` provides the `data_paths` (a temporary, initialized data
-directory) and `config` (mock-mode configuration) fixtures. 186 tests verify
+directory) and `config` (mock-mode configuration) fixtures. 242 tests verify
 the following, module by module: config loading (`test_config.py`), paths/data
 directory initialization (`test_paths.py`), the storage layer
-(`test_storage.py`, `test_inbox.py`), locking (`test_lock.py`), the LLM client
-(`test_llm.py`), the wake loop (`test_loop.py`, `test_loop_m2m3.py`), prompt
+(`test_storage.py`, `test_inbox.py`, `test_outbox.py`), locking
+(`test_lock.py`), the LLM client
+(`test_llm.py`), the wake loop (`test_loop.py`, `test_loop_m2m3.py`,
+`test_loop_outbox.py`), prompt
 normalization (`test_prompts.py`), web tools (`test_webtools.py`), offline
 action expansion (`test_actions_m2.py`), serendipity
 (`test_context_serendipity.py`), revealed interest (`test_revealed.py`),
 the sandbox (`test_sandbox.py`), the tool-use loop (`test_tools_loop.py`),
+the observer-request tool (`test_outbox_tool.py`), autosave
+(`test_autosave.py`),
 the wiki (`test_wiki.py`), preemption (`test_preempt.py`), reports
 (`test_report.py`), the scheduler (`test_scheduler.py`), the web API
 (`test_web_api.py`), the MCP server (`test_mcp_server.py`), and skills
@@ -116,10 +122,14 @@ data/
 ├── index/wiki.sqlite3         # derived wiki FTS5 + link-graph index. Not committed (rebuildable).
 ├── skills/<name>/manifest.json, skill.py  # self-authored skills. Committed (skills.py).
 ├── sandbox/                   # throwaway scratch for skill execution. Not committed.
-├── home/                      # persistent working directory (cwd) for code_experiment. Files the agent writes via relative paths persist across steps. Not a .gitignore target (in contrast to sandbox) — but no commit routine covers it, so it stays uncommitted.
+├── home/                      # persistent working directory (cwd) for code_experiment. Files the agent writes via relative paths persist across steps; resolved outbox attachments are copied to home/attachments/<req-id>/. Committed periodically (autosave.py).
 ├── reports/YYYY-MM-DD.md      # daily retrospectives. Committed (report.py).
-├── inbox/{pending,delivered}.jsonl, inbox.lock  # observer message queue. Not a .gitignore target, but no commit routine adds it — it stays uncommitted inside the data git repository.
-├── chat/recorded.jsonl        # only record=true conversations. Like inbox, no commit routine exists, so it stays uncommitted.
+├── inbox/{pending,delivered}.jsonl, inbox.lock  # observer message queue. Committed periodically (autosave.py).
+├── outbox/requests.jsonl      # agent→observer requests (agent appends via the observer_request tool). Committed periodically (autosave.py).
+├── outbox/resolutions.jsonl   # observer responses (web appends; resolved/declined/ignored/reopened). Same autosave coverage.
+├── outbox/attachments/<req-id>/<file>  # files the observer attached on resolve (web, create-only).
+├── outbox/seen.json, outbox.lock  # agent-side resolution cursor + advisory lock.
+├── chat/recorded.jsonl        # only record=true conversations. Committed periodically (autosave.py).
 ├── transcripts/<step_id>.jsonl  # full per-step LLM round-trips. Not committed (size/noise).
 ├── control/chat.json, paused_step.json  # inter-process signals. Not committed.
 └── logs/agent.log             # operational logs. Not committed.
@@ -127,14 +137,13 @@ data/
 
 **Commit-target summary** (the list `paths.py:DATA_GITIGNORE` explicitly
 excludes: `state.json`, `index/`, `control/`, `logs/`, `agent.lock`,
-`sandbox/`, `transcripts/`): SOUL.md, `notes/`, `wiki/`, `skills/`,
-`reports/`, and `journal/` are **not** gitignored, but the code that actually
-performs commits adds only its own designated targets — `soul.py` adds only
-SOUL.md, `wiki.py` only the relevant page md, `skills.py` only the relevant
-skill directory, and `report.py` commits `reports/ journal/ notes/` together
-once a day. `inbox/` and `chat/` are neither gitignored nor targeted by any
-commit routine, so they remain permanently uncommitted working files inside
-the data git repository (untracked from the git repository's point of view).
+`sandbox/`, `transcripts/`): everything else is committed, but each commit
+routine adds only its own designated targets — `soul.py` adds only SOUL.md,
+`wiki.py` only the relevant page md, `skills.py` only the relevant skill
+directory, `report.py` commits `reports/ journal/ notes/` together once a
+day, and `autosave.py` sweeps up the accumulating history the others don't
+own (`journal/ notes/ home/ inbox/ outbox/ chat/`) every
+`agent.autosave_every_steps` steps.
 
 ## API endpoints (`soul/web/api.py:build_router`)
 
@@ -159,6 +168,8 @@ the data git repository (untracked from the git repository's point of view).
 | POST | `/api/chat/end` | End the chat session (clears the preemption signal). |
 | GET | `/api/chat/{session_id}` | The session's turn list + record flag. |
 | POST | `/api/inbox` (202) | Adds an observer message/gift to the pending queue. |
+| GET | `/api/outbox?status=` | The agent's requests to the observer, newest first, with derived status (`open`\|`resolved`\|`declined`\|`ignored`; optional filter). |
+| POST | `/api/outbox/{id}/resolve` | Multipart form (`status`, optional `note`, optional `file` — file only with resolved/declined). Appends a resolution; 404 unknown id, 409 invalid transition, 413 oversize file, 422 bad status. The API server's fourth allowed write. |
 
 ## Journal step record fields (`soul/storage/journal.py:new_step_record`)
 
@@ -187,6 +198,8 @@ the data git repository (untracked from the git repository's point of view).
 | `sandbox_backend` | str\|null | `bwrap`\|`unshare`\|`docker`\|`subprocess`\|null. |
 | `preempted` | bool | Whether this step was interrupted by chat preemption. |
 | `inbox_delivered` | list[str] | Ids of inbox messages delivered in this step. |
+| `observer_requests` | list[str] | Ids of requests the agent left for the observer this step (`observer_request` tool). |
+| `observer_resolved` | list[str] | Ids of requests whose resolution was surfaced into this step's context. |
 | `llm` | dict | `{model, tokens_in, tokens_out, latency_ms}` (ACT+REFLECT combined). |
 | `error` | dict\|null | `{"phase", "message", "llm_failure"}` — when `kind:"error"`. |
 
@@ -219,7 +232,7 @@ the data git repository (untracked from the git repository's point of view).
 | `serendipity_rate` | `0.3` | Probability of randomly resurfacing a past note. |
 | `soul_max_chars` | `8000` | Maximum characters allowed when writing SOUL.md. |
 | `consecutive_error_backoff` | `5` | Circuit breaker trips after this many consecutive LLM failures. |
-| `autosave_every_steps` | `20` | Commit journal/notes/home/inbox/chat to the data repo every N steps (`autosave @ <step_id>`), so history is preserved even when no daily report has run yet. `0` disables. |
+| `autosave_every_steps` | `20` | Commit journal/notes/home/inbox/outbox/chat to the data repo every N steps (`autosave @ <step_id>`), so history is preserved even when no daily report has run yet. `0` disables. |
 
 ### `chat`
 
@@ -253,6 +266,14 @@ the data git repository (untracked from the git repository's point of view).
 | `enabled` | `true` | Whether `web_explore`/web tools are exposed. |
 | `http_timeout_seconds` | `20` | Web request timeout. |
 | `max_page_kb` | `500` | Maximum bytes received by `web_read` (KB). |
+
+### `observer_requests`
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `true` | Whether the `observer_request` tool is offered to ACT. Pending resolutions still reach the agent when disabled. |
+| `max_open` | `5` | Maximum simultaneously open requests; at the cap the tool returns a neutral error string. Declined/ignored requests free a slot. |
+| `max_attachment_mb` | `20` | Upload size cap for resolve attachments (413 beyond it). |
 
 ### `knowledge`
 

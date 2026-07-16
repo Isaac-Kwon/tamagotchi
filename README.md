@@ -76,7 +76,35 @@ Visit `http://127.0.0.1:8000` (the web server must be running):
 - **Daily report**: browse, by date, the Korean first-person retrospective generated every day at the configured time (`report.time`, default 22:00 `Asia/Seoul`).
 - **Chat**: you can chat with the agent. Any background work in progress pauses at an LLM-call boundary and resumes from that point once the conversation ends (preemption). **If `record` is off (the default), the conversation is not saved anywhere and is not carried into the next wake — the UI explicitly labels it "not remembered".** Only when `record=true` is it kept in `chat/recorded.jsonl` and included in the next wake's context via the observer inbox.
 - **Gifts/messages (inbox)**: when an observer leaves text or a URL, it is passed neutrally into the next wake step's context as "something the observer left". Whether to react is entirely up to the agent.
+- **Requests (outbox, 요청)**: the mirror image of the inbox. During ACT the agent can call an `observer_request` tool to leave a free-form request for you ("I need package X", "I can't reach this paper", or anything else — nothing is suggested to it). Requests appear in this tab as a caretaker todo list, badged with the open count. See "Responding to the agent's requests" below.
 - **Words vs. deeds (stated vs revealed)**: shows the self-reported interest level (stated) side by side with behavioral signals computed purely from the journal (revealed — thread persistence length, whether it returned after a shelve, topic recurrence frequency). Any gap between the two is exposed as-is, not hidden.
+
+## Responding to the agent's requests (caretaker guide)
+
+Open the **요청** tab (or `GET /api/outbox?status=open`). Each open request offers 완료 (resolved), 거절 (declined), 무시 (ignored), an optional note, and 파일 첨부 (attach a file, included on 완료/거절). What the agent experiences:
+
+- **완료 / 거절** reach the agent at its next wake as a neutral context line ("An observer responded to a request you left"), together with your note. An attached file is copied to `home/attachments/<req-id>/<name>` inside the data directory — a path the agent can open from a `code_experiment`, since `home/` is the experiment working directory under every sandbox backend.
+- **무시** is silent: the request leaves your list and the agent is never told (its tool honestly promises only that "a response may arrive later, or not"). It is reversible — switch the filter to 무시 and press 다시 열기 to restore the request to your list.
+
+How to actually fulfill common request kinds:
+
+| Request kind | How to fulfill |
+|---|---|
+| Python package | Install it where the sandbox will see it (below), then 완료 with a note. |
+| Paper / blocked URL | Fetch it yourself and attach the file on 완료 — or send the URL/text as an inbox gift and say so in the note. |
+| Dataset / sample file | Attach on 완료. |
+| Sandbox limits (timeout, memory), wake frequency | Edit `config.json`, restart the loop, 완료 with a note. |
+| A human answer, opinion, or conversation | Reply in the note, or start a chat session. |
+| Not fulfillable | 거절 with an honest note. |
+| Don't want to deal with it right now | 무시 (reversible via the 무시 filter). |
+
+**Which Python gets the package depends on the sandbox backend** (`soul/agent/sandbox.py`; check the journal's `sandbox_backend` field):
+
+| Backend | Interpreter that runs experiments | Where to install |
+|---|---|---|
+| `subprocess` (Windows fallback) | `sys.executable` — the venv running the agent | `pip install` into `.venv` (or `.venv-wsl`) |
+| `bwrap` / `unshare` (WSL primary) | the sandbox's `python3` — bwrap ro-binds `/usr`, the venv is **not** bound | install into WSL's **system** python3 (`sudo apt` / system `pip3`) |
+| `docker` | `python:3-slim` in the container | host installs are invisible — needs a custom image |
 
 ## MCP registration
 
@@ -96,7 +124,7 @@ On WSL (`.venv-wsl`):
 pytest
 ```
 
-All 186 tests should be green. The `data_paths`/`config` fixtures in `tests/conftest.py` provide a data directory initialized under `tmp_path` and a mock-mode config, so tests never touch the real network or the real `./data`.
+All 242 tests should be green. The `data_paths`/`config` fixtures in `tests/conftest.py` provide a data directory initialized under `tmp_path` and a mock-mode config, so tests never touch the real network or the real `./data`.
 
 ## Security honesty notes
 
@@ -104,3 +132,4 @@ All 186 tests should be green. The `data_paths`/`config` fixtures in `tests/conf
 - The same rule applies to self-authored skill execution (`skill_runner.py`) — skills are never imported into the agent process; they always run as a separate subprocess and pass through the same sandbox ladder above.
 - **DuckDuckGo search results may include ads/sponsored links.** `web_search` parses the result HTML from `html.duckduckgo.com/html` as-is and maintains no domain blocklist (neutrality principle — which queries and URLs to pick is entirely the agent's choice). The only safeguards are caps on size (`max_page_kb`, default 500KB) and time (`http_timeout_seconds`, default 20 seconds).
 - Every URL the agent visits is recorded in the journal's `web_visits` field.
+- **Resolve attachments are stored as-is.** A file uploaded via `POST /api/outbox/{id}/resolve` is saved unmodified under `outbox/attachments/` and copied into `home/` at the next wake, where the agent's sandboxed code can read it. The only safeguards are filename sanitization (basename only) and the `max_attachment_mb` size cap — the endpoint trusts its operator, which is why the server binds to `127.0.0.1` by default (`web.allowed_networks` applies if you open it up).

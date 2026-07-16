@@ -234,16 +234,32 @@ reports/이고, 리포트 생성 시 하루 1회 저널도 동반 커밋한다.
 
 쓰기 주체는 정확히 하나로 고정된다. 데이터 디렉토리의 실질적 쓰기는 에이전트
 루프 프로세스만 한다(SOUL.md, 저널, 위키, 스킬, 리포트, state.json). API 서버는
-원칙적으로 읽기 전용이고 예외는 세 가지뿐이다 — inbox `pending.jsonl`
+원칙적으로 읽기 전용이고 예외는 네 가지뿐이다 — inbox `pending.jsonl`
 append(`storage/inbox.append_pending`), 기록 동의된 대화 `chat/recorded.jsonl`
-append(`web/chatlog.py`), 선점 신호 `control/chat.json`(`storage/control.py`).
-MCP 서버(`run_mcp.py`)는 이 셋조차 쓰지 않는 완전 읽기 전용이며, 위키 인덱스도
+append(`web/chatlog.py`), 선점 신호 `control/chat.json`(`storage/control.py`),
+그리고 관찰자 응답 `outbox/resolutions.jsonl` append와 `outbox/attachments/`
+아래 첨부 파일 생성(`storage/outbox.append_resolution`, resolve 엔드포인트).
+MCP 서버(`run_mcp.py`)는 이 넷조차 쓰지 않는 완전 읽기 전용이며, 위키 인덱스도
 `mode=ro` SQLite 연결로만 연다. inbox는 "웹은 append만, 에이전트는 스텝 시작 시
 pending→delivered를 원자적으로 이동"하는 프로토콜로 경합을
 피한다(`storage/inbox.py`, `O_CREAT|O_EXCL` 어드바이저리 락). git 커밋 경합도
 같은 원칙으로 해소된다 — 데이터 git에 쓰는 프로세스가 하나뿐이므로 다중 writer
 문제가 애초에 생기지 않는다. 커밋 실패 시 1회 재시도하고, 그래도 실패하면
 파일은 갱신된 채로 남아 다음 커밋에 포함된다.
+
+outbox(에이전트의 발신 요청 채널, `storage/outbox.py`)는 같은 원칙을 가장 강한
+형태로 확장한다. 에이전트는 `observer_request` ACT 도구로
+`outbox/requests.jsonl`에 요청을 append하고, 웹은 `outbox/resolutions.jsonl`에
+응답을 append한다. 요청의 상태(`open`/`resolved`/`declined`/`ignored`)는 두
+append 전용 로그를 읽기 시점에 조인해서 파생한다 — 마지막 응답 레코드가 이기고,
+`reopened`는 다시 `open`으로 파생된다. 어느 프로세스도 상대의 파일을 고쳐 쓰지
+않는다. 상태를 제자리에서 수정하는 설계는 웹 계층을 에이전트가 보는 상태의
+rewriter로 만들기 때문에 기각했다. 에이전트는 이미 본 응답을 라인 수
+커서(`outbox/seen.json` — resolutions가 append 전용이라 유효)로 추적하고, 첨부
+파일은 drain 시점에 자기 `home/`으로 직접 복사한다. 웹 프로세스가 에이전트의
+작업 디렉토리에 쓰는 일이 없도록 하기 위해서다. `ignored`/`reopened` 레코드는
+의도적으로 에이전트에게 전달하지 않는다 — 도구 설명 자체가 "a response may
+arrive later, or not"이라고만 약속한다.
 
 ## 12. 정직한 프레이밍 원칙 (PLAN §3/P11)
 

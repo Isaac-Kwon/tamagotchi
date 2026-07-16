@@ -285,15 +285,33 @@ loop and asynchronous web concurrency into one process.
 **The writer is fixed to exactly one**: substantive writes to the data
 directory are done only by the agent loop process (SOUL.md, journal, wiki,
 skills, reports, state.json). The API server is read-only in principle, with
-exactly three exceptions — appending to the inbox `pending.jsonl`
+exactly four exceptions — appending to the inbox `pending.jsonl`
 (`storage/inbox.append_pending`), appending recording-consented conversations
-to `chat/recorded.jsonl` (`web/chatlog.py`), and the preemption signal
-`control/chat.json` (`storage/control.py`). The MCP server (`run_mcp.py`)
-writes not even these three — it is **strictly read-only**, and opens the
-wiki index only via a `mode=ro` SQLite connection. The inbox avoids
-contention with a protocol of "the web only appends; the agent atomically
-moves pending→delivered at step start" (`storage/inbox.py`,
-`O_CREAT|O_EXCL` advisory lock). Git commit contention is resolved by the
+to `chat/recorded.jsonl` (`web/chatlog.py`), the preemption signal
+`control/chat.json` (`storage/control.py`), and appending observer
+resolutions to `outbox/resolutions.jsonl` plus create-only attachment files
+under `outbox/attachments/` (`storage/outbox.append_resolution`, the resolve
+endpoint). The MCP server (`run_mcp.py`) writes not even these four — it is
+**strictly read-only**, and opens the wiki index only via a `mode=ro` SQLite
+connection. The inbox avoids contention with a protocol of "the web only
+appends; the agent atomically moves pending→delivered at step start"
+(`storage/inbox.py`, `O_CREAT|O_EXCL` advisory lock).
+
+The outbox (the agent's outbound request channel, `storage/outbox.py`)
+extends the same discipline in its strongest form: the agent appends new
+requests to `outbox/requests.jsonl` (via the `observer_request` ACT tool),
+the web appends resolutions to `outbox/resolutions.jsonl`, and a request's
+status (`open`/`resolved`/`declined`/`ignored`) is **derived** at read time
+by joining the two append-only logs — last resolution record wins, and
+`reopened` derives back to `open`. No process ever rewrites the other's
+file; in-place status mutation was rejected because it would have made the
+web layer a rewriter of agent-visible state. The agent tracks what it has
+already been shown with a line-count cursor (`outbox/seen.json`, valid
+because resolutions are append-only), and copies attachment files into its
+own `home/` at drain time so the web process never writes into the agent's
+working directory. `ignored`/`reopened` records are deliberately never
+surfaced to the agent — the tool's own description promises only that "a
+response may arrive later, or not". Git commit contention is resolved by the
 same principle — since only one process writes to the data git, the
 multi-writer problem never arises in the first place (on commit failure,
 retry once; if it still fails, the files remain updated and are included in

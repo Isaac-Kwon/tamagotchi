@@ -29,7 +29,7 @@ wsl -- bash -lc "cd /mnt/c/Users/<you>/Documents/tamagotchi && .venv-wsl/bin/pyt
 .venv\Scripts\python.exe run_agent.py --once --mock
 ```
 
-207 tests should be green. No network calls in tests — `httpx.MockTransport`
+242 tests should be green. No network calls in tests — `httpx.MockTransport`
 and `FakeLLM` stand in for the real LLM/HTTP; see "Test conventions" below.
 
 ## Invariants — do not break these
@@ -40,7 +40,11 @@ and `FakeLLM` stand in for the real LLM/HTTP; see "Test conventions" below.
   stay shuffled every step (`soul/agent/actions.py:shuffled_actions`) — never
   hard-code an order. The four decisions (`deepen`/`shelve`/`abandon`/`new`)
   must stay symmetric, one-line, neutral definitions — none framed as
-  preferable.
+  preferable. The `observer_request` tool description
+  (`soul/knowledge/tools.py:OUTBOX_TOOLS`) is part of this invariant: keep it
+  one neutral line with a single free-form `text` parameter — no request
+  categories, no examples of things to ask for, and no promise of a response
+  ("a response may arrive later, or not").
 - **REFLECT field order is deliberate**: `reason` must be emitted before
   `decision` in both the prompt's requested JSON shape and
   `soul/storage/journal.py:new_step_record`'s field order. Don't reorder it
@@ -55,9 +59,15 @@ and `FakeLLM` stand in for the real LLM/HTTP; see "Test conventions" below.
   (`agent.soul_max_chars`).
 - **Write-ownership principle**: the agent loop process (`run_agent.py`) is
   the only writer of the data directory in general. The web API
-  (`soul/web/`) may only write three things: `inbox/pending.jsonl` (append),
-  `chat/recorded.jsonl` (append, only when `record=true`), and
-  `control/chat.json` (the preemption signal). The MCP server
+  (`soul/web/`) may only write four things: `inbox/pending.jsonl` (append),
+  `chat/recorded.jsonl` (append, only when `record=true`),
+  `control/chat.json` (the preemption signal), and the outbox resolutions —
+  `outbox/resolutions.jsonl` (append) plus attachment files under
+  `outbox/attachments/` (create-only), via the resolve endpoint.
+  `outbox/requests.jsonl` and `outbox/seen.json` belong to the agent loop;
+  the split keeps every outbox file single-writer (`soul/storage/outbox.py`)
+  — the web layer never rewrites a file, and status is derived by joining
+  the two append-only logs. The MCP server
   (`soul/knowledge/mcp_server.py`) is **strictly read-only** — it opens the
   wiki SQLite index with `mode=ro` and never rebuilds it unless
   `--allow-index-rebuild` is explicitly passed. Do not add new writes to the
