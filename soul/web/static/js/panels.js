@@ -12,6 +12,7 @@
 // .chip 과 아래에서 1회 주입하는 `p-` 접두 hover 스타일뿐이다.
 
 import { MOOD_LABEL_KO } from "./mapping.js";
+import { renderMarkdown } from "./markdown.js";
 
 function el(tag, attrs, children) {
   const node = document.createElement(tag);
@@ -203,7 +204,7 @@ export function initPanels({ root, api, onChatStateChange }) {
   injectHoverStyle();
   root.innerHTML = "";
   const tabBar = el("nav", { style: NAV_STYLE });
-  const contentHost = el("div", { style: "flex:1;overflow-y:auto;padding:var(--sp-5);min-height:0" });
+  const contentHost = el("div", { style: "flex:1;overflow-y:auto;padding:var(--sp-5);min-height:0;scrollbar-gutter:stable" });
   root.appendChild(tabBar);
   root.appendChild(contentHost);
 
@@ -212,6 +213,9 @@ export function initPanels({ root, api, onChatStateChange }) {
   const loaders = {};
   let activeId = null;
   let openStepDetail = null;
+  // Hoisted so the 영혼 성장 tab's [[wiki]] links can jump into the 위키 tab
+  // (assigned inside the wiki block, like openStepDetail from the step block).
+  let openWikiPage = null;
   let outboxBadge = null;
   let lastOutboxCount = 0;
 
@@ -305,7 +309,8 @@ export function initPanels({ root, api, onChatStateChange }) {
     subTabs.appendChild(outBtn);
     subTabs.appendChild(trBtn);
 
-    const contentBody = el("pre", { style: CONTENT_PRE }, [""]);
+    // 산출물 본문: 마크다운을 DOM으로 렌더한다 (로딩/에러 메시지는 textContent 로).
+    const contentBody = el("div", {});
     const transcriptBody = el("div", { style: "display:flex;flex-direction:column;gap:12px" });
     transcriptBody.style.display = "none";
 
@@ -459,7 +464,8 @@ export function initPanels({ root, api, onChatStateChange }) {
             el("div", { style: "font-size:var(--fs-sm);color:var(--warn);background:var(--warn-soft);border-radius:var(--radius-sm);padding:8px 12px", text: "이 스텝은 에러로 끝났습니다: " + msg })
           );
         }
-        contentBody.textContent = (detail && detail.content) || "(산출물 내용 없음)";
+        contentBody.innerHTML = "";
+        contentBody.appendChild(renderMarkdown((detail && detail.content) || "(산출물 내용 없음)"));
       } catch (e) {
         contentBody.textContent = "스텝 상세를 불러오지 못했습니다: " + e.message;
       }
@@ -504,10 +510,11 @@ export function initPanels({ root, api, onChatStateChange }) {
         soulBody.appendChild(emptyNote("(아직 SOUL.md 내용이 없습니다)"));
         return;
       }
-      text.split(/\n\s*\n/).forEach((para) => {
-        const t = para.trim();
-        if (t) soulBody.appendChild(el("p", { style: "margin:0", text: t }));
-      });
+      soulBody.appendChild(
+        renderMarkdown(content, {
+          onWikiLink: (slug) => { activate("wiki"); openWikiPage(slug); },
+        })
+      );
     }
 
     function commitBtnStyle(open) {
@@ -907,7 +914,7 @@ export function initPanels({ root, api, onChatStateChange }) {
       }
     }
 
-    async function openWikiPage(slug) {
+    openWikiPage = async function (slug) {
       currentSlug = slug;
       highlightActive();
       article.innerHTML = "";
@@ -916,7 +923,7 @@ export function initPanels({ root, api, onChatStateChange }) {
         const pg = await api.getWikiPage(slug);
         article.innerHTML = "";
         article.appendChild(el("h2", { style: "margin:0;font-size:var(--fs-xl)", text: pg.title || pg.slug }));
-        article.appendChild(el("div", { style: "margin:0;white-space:pre-wrap;word-break:break-word", text: pg.content || "" }));
+        article.appendChild(renderMarkdown(pg.content || "", { onWikiLink: openWikiPage }));
         const backlinks = pg.backlinks || [];
         if (backlinks.length) {
           const row = el("div", { style: "display:flex;gap:6px;flex-wrap:wrap;font-size:var(--fs-xs);align-items:center" });
@@ -932,7 +939,7 @@ export function initPanels({ root, api, onChatStateChange }) {
         article.innerHTML = "";
         article.appendChild(emptyNote("페이지를 불러오지 못했습니다: " + e.message));
       }
-    }
+    };
 
     searchInput.addEventListener("keydown", (ev) => {
       if (ev.key === "Enter") doSearch(searchInput.value.trim());
@@ -985,7 +992,7 @@ export function initPanels({ root, api, onChatStateChange }) {
         const rep = await api.getReport(date);
         article.innerHTML = "";
         article.appendChild(el("h2", { style: "margin:0;font-size:var(--fs-xl)", text: fmtReportDate(date) + "의 기록" }));
-        article.appendChild(el("div", { style: "margin:0;white-space:pre-wrap;word-break:break-word", text: (rep && rep.content) || "(내용 없음)" }));
+        article.appendChild(renderMarkdown((rep && rep.content) || "(내용 없음)"));
       } catch (e) {
         article.innerHTML = "";
         article.appendChild(emptyNote("리포트를 불러오지 못했습니다: " + e.message));

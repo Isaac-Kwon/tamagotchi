@@ -103,10 +103,10 @@ html,body{margin:0;padding:0}
   </div>
 
   <!-- ===== 본문 ===== -->
-  <div class="layout-main" style="display:grid;grid-template-columns:minmax(400px,46%) 1fr;gap:var(--sp-4);padding:var(--sp-4);flex:1;min-height:0;height:calc(100vh - 54px);overflow:hidden;box-sizing:border-box">
+  <div class="layout-main" style="display:grid;grid-template-columns:minmax(400px,46%) minmax(0,1fr);gap:var(--sp-4);padding:var(--sp-4);flex:1;min-height:0;height:calc(100vh - 54px);overflow:hidden;box-sizing:border-box">
 
     <!-- 방 컬럼 -->
-    <div class="room-col" style="display:flex;flex-direction:column;gap:var(--sp-3);min-width:0;overflow-y:auto">
+    <div class="room-col" style="display:flex;flex-direction:column;gap:var(--sp-3);min-width:0;overflow-y:auto;scrollbar-gutter:stable">
       <div style="position:relative;padding:12px;background:var(--panel);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow)">
         <!-- aspect-ratio 960/600 inner box; Phaser mounts into #game-container and
              fills it. main.js sets #room-inner filter:grayscale(...) when stale. -->

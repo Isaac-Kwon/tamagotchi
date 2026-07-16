@@ -211,7 +211,6 @@ function configSections(c) {
       ["언어", report.language || "—"],
     ]],
     ["웹 서버", [
-      ["전송 모드", "SSE · 폴백 5초"],
       ["SSE 체크 주기", `${web.sse_check_ms} ms`],
     ]],
   ];
