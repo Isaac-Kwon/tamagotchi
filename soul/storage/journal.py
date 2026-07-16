@@ -179,6 +179,103 @@ def revealed_interest(steps: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def stats(
+    steps: list[dict[str, Any]],
+    *,
+    timeline_limit: int = 250,
+    recent_errors: int = 20,
+) -> dict[str, Any]:
+    """Aggregate journal steps into UI-ready statistics (pure function).
+
+    Like :func:`revealed_interest`, this derives everything on read and stores
+    nothing. It powers the web UI's stats panel:
+
+        * distributions   — decisions / actions / moods / interest histogram,
+        * timeline        — last ``timeline_limit`` wake steps, compact fields
+                            only (id, ts, interest, mood, decision, action),
+        * threads         — chronological thread segments (topic river),
+        * errors          — count + the most recent error records.
+
+    ``steps`` is a chronological list of step records (:func:`read_all`).
+    """
+    decisions: Counter[str] = Counter()
+    actions: Counter[str] = Counter()
+    moods: Counter[str] = Counter()
+    interest_hist: Counter[int] = Counter()
+    timeline: list[dict[str, Any]] = []
+    thread_segments: list[dict[str, Any]] = []
+    errors: list[dict[str, Any]] = []
+
+    for step in steps:
+        if step.get("kind") == "error" or step.get("error"):
+            err = step.get("error") or {}
+            errors.append({
+                "id": step.get("id"),
+                "ts": step.get("ts"),
+                "phase": err.get("phase") if isinstance(err, dict) else None,
+                "message": err.get("message") if isinstance(err, dict) else str(err),
+            })
+        if step.get("kind") != "wake_step":
+            continue
+
+        if step.get("decision"):
+            decisions[step["decision"]] += 1
+        if step.get("action"):
+            actions[step["action"]] += 1
+        if step.get("mood"):
+            moods[step["mood"]] += 1
+        interest = step.get("interest")
+        if isinstance(interest, int):
+            interest_hist[interest] += 1
+
+        timeline.append({
+            "id": step.get("id"),
+            "ts": step.get("ts"),
+            "interest": interest if isinstance(interest, int) else None,
+            "mood": step.get("mood"),
+            "decision": step.get("decision"),
+            "action": step.get("action"),
+        })
+
+        # Thread segments: consecutive wake steps sharing a thread_id (threads
+        # are contiguous by construction — a break in decision ends them).
+        thread_id = step.get("thread_id")
+        seg = thread_segments[-1] if thread_segments else None
+        if seg is None or seg["thread_id"] != thread_id:
+            seg = {
+                "thread_id": thread_id,
+                "topic": step.get("topic"),
+                "steps": 0,
+                "start_ts": step.get("ts"),
+                "end_ts": step.get("ts"),
+                "interests": [],
+            }
+            thread_segments.append(seg)
+        seg["steps"] += 1
+        seg["end_ts"] = step.get("ts")
+        if step.get("topic"):
+            seg["topic"] = step.get("topic")  # label follows the latest wording
+        if isinstance(interest, int):
+            seg["interests"].append(interest)
+
+    for seg in thread_segments:
+        ints = seg.pop("interests")
+        seg["avg_interest"] = round(sum(ints) / len(ints), 2) if ints else None
+
+    total = sum(decisions.values())
+    return {
+        "total_steps": len(timeline),
+        "decisions": dict(decisions),
+        "decision_total": total,
+        "actions": dict(actions),
+        "moods": dict(moods),
+        "interest_hist": {str(k): v for k, v in sorted(interest_hist.items())},
+        "timeline": timeline[-timeline_limit:],
+        "threads": thread_segments,
+        "errors": {"count": len(errors), "recent": errors[-recent_errors:]},
+    }
+
+
 def _stated_vs_revealed_note(
     stated_avg: float | None,
     thread_list: list[dict[str, Any]],
