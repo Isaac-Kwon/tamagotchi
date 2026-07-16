@@ -61,6 +61,22 @@ def test_autosave_commits_journal_and_notes(data_paths):
     assert "autosave @ step-000020" in _git_log(data_paths)
 
 
+def test_autosave_commits_outbox(data_paths):
+    from soul.storage import outbox
+
+    outbox.append_request(data_paths, "please install numpy", step_id="step-000020")
+
+    commit = autosave.maybe_autosave(data_paths, {"id": "step-000020"}, 20)
+    assert commit is not None
+    assert "autosave @ step-000020" in _git_log(data_paths)
+
+    tracked = subprocess.run(
+        ["git", "-C", str(data_paths.root), "ls-files", "outbox"],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    assert "outbox/requests.jsonl" in tracked
+
+
 def test_autosave_clean_tree_returns_none(data_paths):
     # Nothing new under the autosaved paths -> no commit, no error.
     assert autosave.maybe_autosave(data_paths, {"id": "step-000020"}, 20) is None

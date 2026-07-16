@@ -22,7 +22,7 @@ from typing import Any
 from ..paths import DataPaths
 
 # Accumulating history covered by the autosave commit.
-AUTOSAVE_PATHS = ("journal", "notes", "home", "inbox", "chat")
+AUTOSAVE_PATHS = ("journal", "notes", "home", "inbox", "outbox", "chat")
 
 _STEP_NUM = re.compile(r"^step-(\d+)$")
 
