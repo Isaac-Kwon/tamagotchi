@@ -31,7 +31,8 @@ README.md 참고. 표와 필드는 실제 코드를 읽고 작성했다. PLAN.md
 | 모듈 | 역할 | 핵심 함수/클래스 |
 |---|---|---|
 | `loop.py` | wake 스텝 오케스트레이션의 중심: 회상 → ACT(도구 루프) → 저장 → REFLECT → 저널/state 갱신 → soul_update 시 커밋. JSON 파싱 3단계 폴백. | `run_step`, `_run_step_body`, `_parse_with_fallback`, `_record_error` |
-| `scheduler.py` | heartbeat/continuous 모드 장기 루프 + 서킷브레이커 + `next_wake_at` 계산. | `run_scheduler`, `compute_wait`, `CircuitBreaker`, `is_llm_failure` |
+| `scheduler.py` | heartbeat/continuous 모드 장기 루프 + 서킷브레이커 + `next_wake_at` 계산 + 주기적 autosave. | `run_scheduler`, `compute_wait`, `CircuitBreaker`, `is_llm_failure` |
+| `autosave.py` | 누적 히스토리(journal/notes/home/inbox/chat)를 `agent.autosave_every_steps` 스텝마다 data repo에 커밋 — 일일 리포트 사이의 안전망. | `maybe_autosave`, `is_due`, `AUTOSAVE_PATHS` |
 | `preempt.py` | 대화 선점: LLM 호출 경계마다 `control/chat.json` 확인, 스텝 타임아웃 데드라인 검사, 스냅샷 저장/복원, 크래시 복구. | `StepController`, `StepTimeout`, `recover_paused_step` |
 | `llm.py` | OpenAI 호환 chat-completions 클라이언트(재시도/백오프/타임아웃) + 트랜스크립트 기록 + 도구 사용 루프. | `LLMClient`, `LLMResponse`, `TranscriptRecorder`, `run_tool_loop` |
 | `fake_llm.py` | 테스트/`--mock`용 `LLMClient` 대체. 큐에 넣은 응답을 순서대로 반환(dict/str/`LLMResponse`/예외). | `FakeLLM` |
@@ -162,7 +163,7 @@ data/
 | `kind` | str | `wake_step` \| `report` \| `error`. |
 | `action` | str\|null | 선택된 행동 이름(`free_write` 등, `skill:<name>` 포함). |
 | `topic` | str\|null | ACT가 정한 한 줄 주제. |
-| `thread_id` | str\|null | `th-NNNN`. `deepen`이면 이전 스텝과 동일 유지. |
+| `thread_id` | str\|null | `th-NNNN`. `deepen`이면 이전 스텝과 동일 유지 (decision 기준 — topic 문구가 스텝 사이에 달라져도 스레드는 끊기지 않는다). |
 | `content_path` | str\|null | 산출물 경로(`notes/<id>.md` 등). |
 | `interest` | int\|null | 1~10, clamp 적용. |
 | `interest_delta` | str\|null | `more`\|`less`\|`same`\|`first`. |
@@ -212,6 +213,7 @@ data/
 | `serendipity_rate` | `0.3` | 과거 노트 무작위 재부상 확률. |
 | `soul_max_chars` | `8000` | SOUL.md 쓰기 허용 최대 글자 수. |
 | `consecutive_error_backoff` | `5` | 이 횟수 연속 LLM 실패 시 서킷브레이커 발동. |
+| `autosave_every_steps` | `20` | N스텝마다 journal/notes/home/inbox/chat을 data repo에 커밋(`autosave @ <step_id>`) — 일일 리포트가 아직 없어도 히스토리를 보존한다. `0`이면 비활성. |
 
 ### `chat`
 

@@ -29,7 +29,7 @@ wsl -- bash -lc "cd /mnt/c/Users/<you>/Documents/tamagotchi && .venv-wsl/bin/pyt
 .venv\Scripts\python.exe run_agent.py --once --mock
 ```
 
-186 tests should be green. No network calls in tests — `httpx.MockTransport`
+207 tests should be green. No network calls in tests — `httpx.MockTransport`
 and `FakeLLM` stand in for the real LLM/HTTP; see "Test conventions" below.
 
 ## Invariants — do not break these
@@ -112,4 +112,5 @@ logical change, with a Conventional-Commits-style prefix (`feat:`, `fix:`,
 `docs:`, `refactor:`, `test:`). This is distinct from the **data repo**'s own
 commit messages, which follow a fixed, code-driven convention you should not
 imitate for source commits: `SOUL update @ <step_id>`, `wiki: update <slug>`,
-`skill: create|update|auto-disable <name>`, `report: <date>`.
+`skill: create|update|auto-disable <name>`, `report: <date>`,
+`autosave @ <step_id>`.

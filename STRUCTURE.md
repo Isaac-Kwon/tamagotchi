@@ -32,7 +32,8 @@ and fields were written from reading the actual code; wherever it differs from
 | Module | Role | Key functions/classes |
 |---|---|---|
 | `loop.py` | Wake-step orchestration (the heart): recall → ACT (tool loop) → save → REFLECT → journal/state update → commit on soul_update. Three-stage JSON fallback. | `run_step`, `_run_step_body`, `_parse_with_fallback`, `_record_error` |
-| `scheduler.py` | Long-running loop for heartbeat/continuous modes + circuit breaker + `next_wake_at` computation. | `run_scheduler`, `compute_wait`, `CircuitBreaker`, `is_llm_failure` |
+| `scheduler.py` | Long-running loop for heartbeat/continuous modes + circuit breaker + `next_wake_at` computation + periodic autosave. | `run_scheduler`, `compute_wait`, `CircuitBreaker`, `is_llm_failure` |
+| `autosave.py` | Periodic data-repo commit of accumulating history (journal/notes/home/inbox/chat) every `agent.autosave_every_steps` steps — the safety net between daily reports. | `maybe_autosave`, `is_due`, `AUTOSAVE_PATHS` |
 | `preempt.py` | Chat preemption: checks `control/chat.json` at every LLM call boundary, enforces the step timeout deadline, saves/restores snapshots, recovers from crashes. | `StepController`, `StepTimeout`, `recover_paused_step` |
 | `llm.py` | OpenAI-compatible chat-completions client (retry/backoff/timeout) + transcript recording + tool-use loop. | `LLMClient`, `LLMResponse`, `TranscriptRecorder`, `run_tool_loop` |
 | `fake_llm.py` | `LLMClient` stand-in for tests/`--mock`. Returns queued responses in order (dict/str/`LLMResponse`/exception). | `FakeLLM` |
@@ -168,7 +169,7 @@ the data git repository (untracked from the git repository's point of view).
 | `kind` | str | `wake_step` \| `report` \| `error`. |
 | `action` | str\|null | Name of the chosen action (`free_write` etc., including `skill:<name>`). |
 | `topic` | str\|null | One-line topic decided by ACT. |
-| `thread_id` | str\|null | `th-NNNN`. Kept identical to the previous step on `deepen`. |
+| `thread_id` | str\|null | `th-NNNN`. Kept identical to the previous step on `deepen` (decision-driven — the topic wording may drift between steps without breaking the thread). |
 | `content_path` | str\|null | Output path (`notes/<id>.md` etc.). |
 | `interest` | int\|null | 1–10, clamped. |
 | `interest_delta` | str\|null | `more`\|`less`\|`same`\|`first`. |
@@ -218,6 +219,7 @@ the data git repository (untracked from the git repository's point of view).
 | `serendipity_rate` | `0.3` | Probability of randomly resurfacing a past note. |
 | `soul_max_chars` | `8000` | Maximum characters allowed when writing SOUL.md. |
 | `consecutive_error_backoff` | `5` | Circuit breaker trips after this many consecutive LLM failures. |
+| `autosave_every_steps` | `20` | Commit journal/notes/home/inbox/chat to the data repo every N steps (`autosave @ <step_id>`), so history is preserved even when no daily report has run yet. `0` disables. |
 
 ### `chat`
 
