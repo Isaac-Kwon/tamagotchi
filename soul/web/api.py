@@ -23,6 +23,7 @@ from ..knowledge import wiki
 from ..paths import DataPaths
 from ..storage import inbox, journal, outbox, state as state_store
 from ..agent import report as report_mod
+from ..agent import skills as skills_mod
 from ..agent import soul
 from . import events, gitview
 from .chat import ChatManager
@@ -197,6 +198,21 @@ def build_router(cfg: Config, paths: DataPaths, chat_manager: ChatManager) -> AP
     @router.get("/api/revealed")
     def get_revealed() -> dict[str, Any]:
         return journal.revealed_interest(journal.read_all(paths))
+
+    # -- stats --------------------------------------------------------------#
+    @router.get("/api/stats")
+    def get_stats(timeline: int = 250) -> dict[str, Any]:
+        return journal.stats(
+            journal.read_all(paths), timeline_limit=max(0, timeline)
+        )
+
+    # -- skills -------------------------------------------------------------#
+    @router.get("/api/skills")
+    def get_skills() -> dict[str, Any]:
+        return {
+            "skills": skills_mod.list_skills(paths),
+            "auto_disable_after_failures": cfg.skills.auto_disable_after_failures,
+        }
 
     # -- wiki -------------------------------------------------------------- #
     @router.get("/api/wiki/pages")

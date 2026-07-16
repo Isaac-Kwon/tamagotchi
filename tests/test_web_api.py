@@ -533,3 +533,53 @@ def test_allowlist_fail_closed_on_unparseable_client(seeded):
 def test_empty_allowlist_disables_filtering(seeded):
     c = _allowlist_client(seeded, [], ("10.9.8.7", 1234))
     assert c.get("/api/state").status_code == 200
+
+
+# --------------------------------------------------------------------------- #
+# stats + skills (read-only UI feeds)
+# --------------------------------------------------------------------------- #
+def test_get_stats(client):
+    r = client.get("/api/stats")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["total_steps"] == 1
+    assert body["decisions"] == {"deepen": 1}
+    assert body["interest_hist"] == {"7": 1}
+    assert body["timeline"][0]["id"] == "step-000001"
+    assert body["threads"][0]["steps"] == 1
+    assert body["errors"]["count"] == 0
+
+
+def test_get_stats_timeline_param(client):
+    _seed_step(client._config, client._paths)
+    r = client.get("/api/stats?timeline=1")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["total_steps"] == 2
+    assert len(body["timeline"]) == 1
+    assert body["timeline"][0]["id"] == "step-000002"
+
+
+def test_get_skills_empty(client):
+    r = client.get("/api/skills")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["skills"] == []
+    assert body["auto_disable_after_failures"] == 3
+
+
+def test_get_skills_lists_manifest(client):
+    from soul.agent import skills as skills_mod
+
+    skills_mod.create_skill(
+        client._paths, "adder", "adds numbers",
+        "def run(args):\n    return str(sum(int(a) for a in args))\n",
+    )
+    r = client.get("/api/skills")
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["skills"]) == 1
+    m = body["skills"][0]
+    assert m["name"] == "adder"
+    assert m["enabled"] is True
+    assert m["failures"] == 0
