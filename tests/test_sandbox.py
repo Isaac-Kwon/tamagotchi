@@ -59,3 +59,19 @@ def test_run_python_nonzero_on_error(tmp_path):
     )
     assert res.returncode != 0
     assert "boom" in res.stderr
+
+
+def test_files_written_by_snippet_persist_in_work_dir(tmp_path):
+    """A file the snippet writes with a relative path survives the run — this is
+    what lets the agent accumulate its own data in data/home/ across steps. Only
+    the entry script (_experiment.py) is cleaned up."""
+    work = tmp_path / "home"
+    res = sandbox.run_python(
+        "open('kept.txt', 'w').write('data')",
+        work_dir=work,
+        backend="subprocess",
+    )
+    assert res.returncode == 0
+    assert (work / "kept.txt").read_text() == "data"
+    # The scratch entry script is removed; the agent's artifact remains.
+    assert not (work / "_experiment.py").exists()

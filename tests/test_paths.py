@@ -31,6 +31,15 @@ def test_data_gitignore_written(tmp_path):
         assert entry in ignore
 
 
+def test_home_dir_persistent_and_not_ignored(tmp_path):
+    """home/ is created and, unlike the ephemeral sandbox/, is NOT git-ignored —
+    it holds data the agent accumulates across steps and should be tracked."""
+    paths = init_data_dir(tmp_path / "data")
+    assert paths.home_dir.is_dir()
+    ignore = paths.gitignore.read_text(encoding="utf-8")
+    assert "home/" not in ignore
+
+
 def test_data_git_repo_initialized_with_commit(tmp_path):
     paths = init_data_dir(tmp_path / "data")
     assert paths.git_dir.exists()

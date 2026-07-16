@@ -107,7 +107,8 @@ data/
 ├── wiki/<slug>.md             # 위키 원본(frontmatter+본문+[[링크]]). 커밋됨(wiki.py).
 ├── index/wiki.sqlite3         # 위키 FTS5+링크 그래프 파생 인덱스. 커밋 안 함(재빌드 가능).
 ├── skills/<name>/manifest.json, skill.py  # 자작 스킬. 커밋됨(skills.py).
-├── sandbox/                   # code_experiment/스킬 작업 디렉토리. 커밋 안 함.
+├── sandbox/                   # 스킬 실행용 일회성 스크래치. 커밋 안 함.
+├── home/                      # code_experiment의 영속 작업 디렉토리(cwd). 에이전트가 상대경로로 쓴 파일이 스텝 간 유지됨. .gitignore 대상 아님(sandbox와 대비) — 다만 커밋 루틴은 없어 커밋되지 않은 채로 남습니다.
 ├── reports/YYYY-MM-DD.md      # 일일 회고. 커밋됨(report.py).
 ├── inbox/{pending,delivered}.jsonl, inbox.lock  # 관찰자 메시지 큐. .gitignore 대상 아니지만 어떤 커밋 루틴도 add하지 않음 — 데이터 git 저장소 안에 커밋되지 않은 채로 남습니다.
 ├── chat/recorded.jsonl        # record=true인 대화만. inbox와 동일하게 커밋 루틴이 없어 커밋되지 않습니다.

@@ -132,7 +132,9 @@ def _run_code_experiment(
     """Run the snippet from a code_experiment through the sandbox ladder (P3).
 
     Returns ``(augmented_content, sandbox_backend)``. The run output is appended
-    to the note so the experiment's result is preserved alongside the code. A
+    to the note so the experiment's result is preserved alongside the code. The
+    cwd is the persistent ``data/home/`` (not the ephemeral ``sandbox/``) so any
+    files the snippet writes with relative paths survive into later steps. A
     failing snippet is data, not an error — it never fails the step.
     """
     code = _extract_code(content)
@@ -140,7 +142,7 @@ def _run_code_experiment(
         return content, None
     result = sandbox.run_python(
         code,
-        work_dir=paths.sandbox_dir,
+        work_dir=paths.home_dir,
         timeout_seconds=cfg.sandbox.timeout_seconds,
         backend=cfg.sandbox.backend,
     )

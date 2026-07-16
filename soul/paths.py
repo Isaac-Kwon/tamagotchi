@@ -20,6 +20,7 @@ DATA_SUBDIRS: tuple[str, ...] = (
     "index",
     "skills",
     "sandbox",
+    "home",
     "reports",
     "inbox",
     "chat",
@@ -100,6 +101,17 @@ class DataPaths:
     @property
     def sandbox_dir(self) -> Path:
         return self.root / "sandbox"
+
+    @property
+    def home_dir(self) -> Path:
+        """Persistent working directory for code the agent runs (P3).
+
+        Unlike ``sandbox/`` (ephemeral scratch, git-ignored), this is the cwd of
+        every ``code_experiment`` execution and is *not* git-ignored: files the
+        agent writes here (relative paths) survive across steps so it can
+        accumulate its own data.
+        """
+        return self.root / "home"
 
     @property
     def reports_dir(self) -> Path:
