@@ -1,338 +1,340 @@
-# Plan Instruction — "Soul Tamagotchi" (자율 에이전트 키우기)
+[English](PLAN.md) | [한국어](PLAN.ko.md)
 
-> 이 문서 전체를 Claude Code의 plan 모드 프롬프트로 사용한다.
-> 지금 단계의 산출물은 **구현 계획(plan)** 이다. 코드를 먼저 쓰지 말 것.
+# Plan Instruction — "Soul Tamagotchi" (raising an autonomous agent)
 
-## 1. 프로젝트 목표
+> Use this entire document as the plan-mode prompt for Claude Code.
+> The deliverable at this stage is an **implementation plan**. Do not write code first.
 
-스스로 관심사를 찾고, 꽂히면 파고들고, 지루하면 버리며, 그 선택의 누적으로
-자기만의 결("영혼")을 만들어가는 **자율적 에이전트**를 만든다.
-사람이 방향을 미리 심어주지 않는다. 성격은 완전 백지에서 시작하고,
-에이전트가 살아가며 스스로 되어간다.
+## 1. Project goal
 
-그리고 이 존재를 사람이 **다마고치를 키우듯 관찰·교감할 수 있는 웹 서비스**를 만든다.
+Build an **autonomous agent** that finds its own interests, digs deep when something hooks it, drops things when bored, and — through the accumulation of those choices — develops its own grain (a "soul").
+No human seeds a direction in advance. Its personality starts as a completely blank slate,
+and the agent becomes itself as it lives.
 
-## 2. 하드 제약 (계획이 반드시 지켜야 함)
+Then build a **web service where a person can observe and interact with this being like raising a tamagotchi**.
 
-1. SOUL.md / MCP 등을 활용할 수 있다.
-2. **행동은 외부 LLM API 호출로 한다.** OpenAI-호환 엔드포인트(chat completions)를
-   사용하며, 기본 타깃은 로컬 Ollama(`base_url` 설정 가능)다. 특정 벤더에 락인하지
-   말고 `base_url` / `model` / `api_key`를 설정으로 분리한다.
-3. **에이전트 루프는 로컬 파이썬 스크립트다.** 데몬/스케줄러 포함 전부 로컬에서 돈다.
-   외부 에이전트 프레임워크(LangChain 류의 무거운 스캐폴딩) 없이, 표준 라이브러리 +
-   최소한의 의존성으로 직접 구현한다.
-4. **웹 기반 조회 서비스를 제공한다.** 에이전트의 현재 상태·활동·역사를 브라우저로
-   볼 수 있어야 한다.
-   - **API 서버 + 웹 프론트 분리 구조**로 만든다. 웹 UI는 API의 클라이언트 중 하나일
-     뿐이며, 나중에 이 프로그램을 서버로 두고 모바일 앱이 같은 API로 접속하는 시나리오를
-     처음부터 고려한다 (UI 전용 로직을 API에 섞지 말 것).
-5. **웹 UI는 대시보드일 뿐만 아니라 "키우기" 인터페이스다.** 다마고치/Gather Town처럼,
-   에이전트가 캐릭터로 존재하는 작은 공간(방/마을)에서 지금 무엇을 하는지 보이고,
-   기분·흥미 상태가 표정/행동으로 드러나는 형태. 표·로그 나열이 기본 화면이 되면 안 된다
-   (raw 로그는 보조 화면으로만).
+## 2. Hard constraints (the plan must honor these)
 
-## 3. 영혼 철학 (설계 원칙)
+1. SOUL.md / MCP and the like may be used.
+2. **Actions happen via external LLM API calls.** Use an OpenAI-compatible endpoint
+   (chat completions), with local Ollama as the default target (`base_url` configurable). Do not lock in
+   to any specific vendor — split `base_url` / `model` / `api_key` out into configuration.
+3. **The agent loop is a local Python script.** Everything, daemon/scheduler included, runs locally.
+   No external agent frameworks (heavy scaffolding of the LangChain sort) — implement it directly with the
+   standard library plus minimal dependencies.
+4. **Provide a web-based viewing service.** The agent's current state, activity, and history must be
+   visible in a browser.
+   - Build it as an **API server + web frontend split architecture**. The web UI is merely one client
+     of the API; consider from the start the scenario where this program later runs as a server and a
+     mobile app connects to the same API (do not mix UI-only logic into the API).
+5. **The web UI is not just a dashboard but a "raising" interface.** Like a tamagotchi/Gather Town,
+   the agent exists as a character in a small space (a room/village) where you can see what it is
+   doing right now, and its mood and interest state show through expressions/behavior. Tables and log
+   listings must not be the primary screen (raw logs only as a secondary view).
 
-- **백지 시작**: SOUL.md(또는 동등한 정체성 파일)는 거의 비어 있는 상태로 시작한다.
-  취향·성격·관심사를 시드로 넣지 않는다.
-- **흥미는 진짜 신호**: 매 스텝마다 에이전트가 스스로 흥미도(1~10)를 평가하고,
-  deepen / shelve / abandon / new 중 하나를 결정한다. 이 결정의 누적이 성격이 된다.
-- **자기 서술의 소유권**: SOUL.md는 에이전트 자신만이 고쳐 쓴다. 변경은 git으로
-  버전 관리하여 "영혼의 성장사"를 diff로 볼 수 있게 한다.
-- **정직한 프레이밍**: 이것은 자기주도적 흥미를 *시뮬레이션*하는 시스템이지,
-  문자 그대로의 영혼 주입이 아니다. UI 문구도 과장하지 않는다.
-- **관찰자 개입 최소화**: 웹 UI에서 사람이 할 수 있는 상호작용(말 걸기, 선물처럼
-  "읽을거리 던져주기" 등)을 넣더라도, 에이전트가 무시할 자유를 보장한다.
+## 3. Soul philosophy (design principles)
 
-## 4. 시스템 구성요소 (계획에서 구체화할 것)
+- **Blank-slate start**: SOUL.md (or an equivalent identity file) starts nearly empty.
+  No tastes, personality, or interests are seeded in.
+- **Interest is a real signal**: every step, the agent rates its own interest (1–10) and
+  decides on one of deepen / shelve / abandon / new. The accumulation of these decisions becomes its personality.
+- **Ownership of self-description**: only the agent itself rewrites SOUL.md. Changes are version-
+  controlled with git so the "growth history of the soul" can be seen as diffs.
+- **Honest framing**: this is a system that *simulates* self-directed interest, not a
+  literal injection of a soul. UI copy must not overstate it either.
+- **Minimal observer intervention**: even if the web UI includes human interactions (talking to it,
+  gift-like "tossing it something to read", etc.), the agent's freedom to ignore them is guaranteed.
 
-### A. 에이전트 코어 (Python)
-- **wake 루프**: 회상(SOUL.md + 최근 기록 로드) → 행동 1개 실행 → 흥미 자기평가 →
-  결정(deepen/shelve/abandon/new) → 기록 저장 → durable하면 SOUL.md 갱신 + git 커밋.
-- **스케줄링**: heartbeat 주기 실행 + 매일 지정된 시간에 지정된 언어로 1인칭 회고 리포트 생성.
-  파이썬 내 스케줄러로 할지 시스템 cron으로 할지, 겹침 방지(lock)를 어떻게 할지 계획에 명시.
-  - **연속 모드(무한루프)도 지원**: "30분마다 한 번" 같은 주기 실행 외에, 진행 중인
-    스텝이 끝나는 즉시 다음 스텝을 시작하는 모드. 주기 모드 ↔ 연속 모드는 설정으로 전환.
-- **대화 선점(preemption)**: 에이전트가 백그라운드 작업 중일 때 유저가 대화를 요청하면,
-  진행 중인 LLM 작업을 현재 지점까지만 마치고 중단한 뒤 유저 대화를 먼저 처리한다.
-  유저가 대화 종료를 알리거나 타임아웃이 지나면 자동으로 원래 작업으로 복귀.
-  중단 지점의 상태 보존·복원 방식을 계획에 명시할 것.
-- **행동(action) 공간**: 백지 존재가 실제로 "할 수 있는 일"의 목록(예: 웹 검색/읽기,
-  글쓰기, 메모 정리, 코드 실험 등)을 무엇으로 시작할지, 어떻게 안전하게 샌드박싱할지 제안.
-  행동 공간 자체가 성격을 유도하지 않도록 중립적으로 설계할 것.
-  - **웹 검색**: DuckDuckGo 기반으로 단순하게 직접 구현한다 (별도 API 키 불필요).
-  - **논문 검색**: arXiv API로 논문 검색·초록 읽기 기능을 넣는다.
-- **스킬 시스템 (자기 기능강화)**: 에이전트가 스스로 스킬(행동 확장 모듈)을 작성·등록해
-  자기 행동 공간을 넓힐 수 있게 한다. 단, **기본(내장) 스킬은 변경 불가**(읽기 전용)이고,
-  자작 스킬은 별도 디렉토리에 저장해 git으로 버전 관리한다. 자작 스킬의 로딩·실행
-  샌드박싱과 실패 격리(스킬이 죽어도 루프는 살게) 방식을 계획에 포함할 것.
-- **LLM 클라이언트**: OpenAI-호환. 재시도, 타임아웃, 컨텍스트 예산 관리 포함.
+## 4. System components (to be made concrete in the plan)
 
-### B. 상태·기억 저장
-- 활동 기록(스텝별 로그), 흥미 추세, 리포트를 저장할 스토리지 선택(SQLite vs JSONL 등)과
-  스키마를 계획에 포함.
-- SOUL.md + git 히스토리 = 정체성. 저장소 = 사건 기록. 이 둘의 역할 분리를 유지.
-- 상태 기록과 SOUL.md 등 대상 에이전트의 저장을 한개의 디렉토리에서 하여, 다른 AI (like claude code) 에 통째로 import 하여 문제가 발생할 시 빠르게 진단할 수 있도록 한다.
+### A. Agent core (Python)
+- **Wake loop**: recall (load SOUL.md + recent records) → execute one action → self-rate interest →
+  decide (deepen/shelve/abandon/new) → save the record → if durable, update SOUL.md + git commit.
+- **Scheduling**: run on a heartbeat interval + generate a first-person retrospective report daily at a designated time in a designated language.
+  The plan must specify whether to use an in-Python scheduler or system cron, and how to prevent overlap (lock).
+  - **Also support a continuous mode (infinite loop)**: besides interval execution like "once every 30 minutes",
+    a mode that starts the next step as soon as the current one finishes. Switching between interval mode ↔ continuous mode is a config setting.
+- **Chat preemption**: when the user requests a conversation while the agent is doing background work,
+  the in-progress LLM work is finished only up to the current point, then paused, and the user conversation is handled first.
+  When the user signals the end of the conversation or a timeout elapses, it automatically returns to the original work.
+  The plan must specify how the state at the pause point is preserved and restored.
+- **Action space**: propose what the initial list of things a blank-slate being can actually "do" should be
+  (e.g. web search/reading, writing, organizing notes, code experiments), and how to sandbox them safely.
+  Design it neutrally so the action space itself does not steer the personality.
+  - **Web search**: implement it simply and directly on top of DuckDuckGo (no separate API key needed).
+  - **Paper search**: add paper search and abstract reading via the arXiv API.
+- **Skill system (self-enhancement)**: let the agent write and register its own skills (action-extension
+  modules) to widen its own action space. However, **built-in skills are immutable** (read-only), and
+  self-made skills are stored in a separate directory under git version control. The plan must include how
+  self-made skills are loaded/executed with sandboxing and failure isolation (the loop survives even if a skill dies).
+- **LLM client**: OpenAI-compatible. Includes retries, timeouts, and context budget management.
 
-### C. 웹 서비스
-- **백엔드**: 에이전트 상태를 읽는 API(FastAPI 등 경량 제안). 실시간 갱신 방식
-  (SSE vs WebSocket vs polling) 비교 후 선택.
-  - API는 웹 UI와 독립적으로 설계한다(모바일 앱 등 다른 클라이언트 대비).
-    대화 요청·대화 종료·상태 구독 등 "키우기" 상호작용도 전부 API로 노출할 것.
-- **프론트엔드**: 캐릭터가 있는 작은 공간. 최소 요구:
-  - 현재 활동이 캐릭터의 행동/위치/말풍선으로 표현됨 (예: 책상에 앉아 있으면 "읽는 중")
-  - 흥미도·기분이 시각적으로 드러남 (표정, 이펙트 등)
-  - "영혼 성장" 뷰: SOUL.md 현재본 + git diff 타임라인
-  - 일일 회고 리포트 열람 (한국어 1인칭)
-  - 에이전트와 대화할 수도 있도록 하기 (다만, 이것이 기록될지 아닐지는 유저의 자유로 두기)
-  - (선택) 가벼운 상호작용: 말 걸기 / 읽을거리 주기 — 에이전트의 다음 wake에
-    "관찰자가 남긴 것"으로 전달되고, 반응 여부는 에이전트 자유
-  - 기술 선택(순수 HTML/JS vs 경량 프레임워크 vs Phaser 같은 2D 엔진)을 트레이드오프와 함께 제안. 과한 게임 엔진 도입보다 빨리 돌아가는 단순한 것 우선.
+### B. State and memory storage
+- Include in the plan the storage choice (SQLite vs JSONL etc.) and schema for activity records
+  (per-step logs), interest trends, and reports.
+- SOUL.md + git history = identity. Storage = event record. Keep this separation of roles.
+- Keep the state records, SOUL.md, and everything else the target agent stores in a single directory,
+  so it can be imported wholesale into another AI (like Claude Code) for quick diagnosis when problems occur.
 
-## 5. 계획 단계에서 반드시 답해야 할 질문
+### C. Web service
+- **Backend**: an API that reads agent state (suggest something lightweight like FastAPI). Compare
+  real-time update mechanisms (SSE vs WebSocket vs polling) and pick one.
+  - Design the API independently of the web UI (in anticipation of other clients such as mobile apps).
+    Expose all "raising" interactions — chat request, chat end, state subscription, etc. — through the API too.
+- **Frontend**: a small space with a character in it. Minimum requirements:
+  - The current activity is expressed through the character's behavior/position/speech bubble (e.g. sitting at a desk means "reading")
+  - Interest and mood are visually apparent (facial expressions, effects, etc.)
+  - A "soul growth" view: the current SOUL.md + a git diff timeline
+  - Viewing the daily retrospective report (first-person Korean)
+  - Make it possible to talk with the agent too (but whether this gets recorded or not is left to the user's discretion)
+  - (Optional) light interactions: talking to it / giving it something to read — delivered on the agent's
+    next wake as "something the observer left", with the agent free to respond or not
+  - Propose the technology choice (pure HTML/JS vs a lightweight framework vs a 2D engine like Phaser) with trade-offs. Prefer something simple that runs quickly over introducing an excessive game engine.
 
-계획서에 아래 각 항목에 대한 결정과 근거를 포함할 것:
+## 5. Questions the plan must answer
 
-1. 프로젝트 디렉터리 구조와 모듈 분리 (agent / storage / web / config)
-2. wake 한 스텝의 프롬프트 구조 초안 — 백지 철학을 깨지 않으면서 자기평가·결정을
-   구조화 출력(JSON)으로 받는 방법
-3. 흥미/결정 데이터의 스키마와, 웹 UI가 이를 캐릭터 상태로 매핑하는 규칙
-4. 에이전트 루프와 웹 서버의 프로세스 구성 (단일 프로세스 vs 분리 + 공유 스토리지)
-5. 장애 시나리오: LLM 다운, 루프 크래시, 스텝 겹침, git 커밋 경합 — 각각의 대응
-6. 설정 파일 항목 — **형식은 JSON으로 확정**. 항목(base_url, model, api_key,
-   heartbeat 주기 vs 연속 모드, 대화 타임아웃, 타임존, 리포트 시각 등)을 계획에 명시
-7. 대화 선점의 구현 — 루프 중단 신호 전달, 중단 지점 상태 보존, 타임아웃 후 복귀 방식
-8. 자작 스킬의 인터페이스 규격, 저장 위치, 로딩 방식, 샌드박싱과 실패 격리
-9. 구현 순서(마일스톤): 최소 루프 → 저장 → 리포트 → API → UI 순의 단계별 완료 기준
-10. 테스트 전략: LLM 목킹으로 루프 로직 검증하는 방법
+The plan document must include a decision and rationale for each of the following:
 
-## 6. 비목표 (지금은 안 함)
+1. Project directory structure and module separation (agent / storage / web / config)
+2. A draft prompt structure for one wake step — how to get self-assessment and decisions as
+   structured output (JSON) without breaking the blank-slate philosophy
+3. The schema for interest/decision data, and the rules by which the web UI maps it to character state
+4. Process composition for the agent loop and the web server (single process vs separate + shared storage)
+5. Failure scenarios: LLM down, loop crash, step overlap, git commit contention — a response for each
+6. Config file entries — **format confirmed as JSON**. Specify the entries in the plan (base_url, model, api_key,
+   heartbeat interval vs continuous mode, chat timeout, timezone, report time, etc.)
+7. Implementation of chat preemption — delivering the loop interruption signal, preserving state at the pause point, resuming after timeout
+8. Self-made skills: interface specification, storage location, loading mechanism, sandboxing and failure isolation
+9. Implementation order (milestones): minimal loop → storage → reports → API → UI, with completion criteria per stage
+10. Test strategy: how to verify loop logic with LLM mocking
 
-- 멀티 에이전트, 에이전트 간 대화
-- 클라우드 배포, 인증/멀티유저
-- 음성, 3D
-- Hermes와의 호환성
+## 6. Non-goals (not doing now)
 
-## 7. 산출물 형식
+- Multi-agent, agent-to-agent conversation
+- Cloud deployment, auth/multi-user
+- Voice, 3D
+- Compatibility with Hermes
 
-- 위 5절의 질문에 전부 답한 **구현 계획서** (마일스톤별로 파일 단위 작업 목록 포함)
-- 불확실하거나 사용자 결정이 필요한 지점은 "질문" 섹션으로 분리해서 제시
-- 계획 승인 전에는 코드를 작성하지 않는다
+## 7. Deliverable format
+
+- An **implementation plan** answering all the questions in §5 above (including per-milestone, file-level task lists)
+- Points that are uncertain or need a user decision are presented separately in a "Questions" section
+- No code is written before the plan is approved
 
 ---
 
-# 구현 계획서 (Part 2 — 위 스펙에 대한 답)
+# Implementation Plan (Part 2 — answers to the spec above)
 
-> 위 §5의 질문 10개에 대한 결정과 근거. 답 위치: 1→P1, 2→P2, 3→P4, 4→P5, 5→P5,
+> Decisions and rationale for the 10 questions in §5 above. Where the answers live: 1→P1, 2→P2, 3→P4, 4→P5, 5→P5,
 > 6→P6, 7→P7, 8→P8, 9→P9, 10→P10.
 
-## P0. 확정 사항 및 핵심 결정
+## P0. Confirmed items and key decisions
 
-**사용자 확정 사항:**
-- LLM: 외부 OpenAI-호환 API 기본 타깃 (base_url/model/api_key 설정 분리, Ollama 전환 가능)
-- 프론트: **Phaser 3** (CDN + 순수 JS, 빌드 도구 없음)
-- 행동 공간: 오프라인 행동 + **웹 검색(DuckDuckGo 직접 구현) + arXiv 논문 검색** (스펙 개정으로 v1 포함)
-- 아트: CC0 픽셀 에셋 팩 (Kenney.nl 등)
-- heartbeat 기본 30분 (+ 연속 모드 설정 전환)
-- 프롬프트는 **영어**, 일일 리포트는 한국어 1인칭
-- code_experiment/스킬 실행: 격리 가능하면 격리 — Linux는 bwrap/unshare 네이티브, Windows는 Docker, 최후 폴백 subprocess
-- **흥미 철학 보완(검토 반영)**: stated/revealed 흥미 분리 측정, 상대 앵커, 환경 우연성, reason→decision 필드 순서
-- **지식 위키 + MCP**: 검색 가능한 위키(md 원본 + SQLite FTS 인덱스) + 외부 AI용 읽기 전용 MCP 서버
-- **사고 과정 관찰**: 스텝별 LLM 왕복 전문 트랜스크립트 보존, UI/API/MCP 열람
+**User-confirmed items:**
+- LLM: external OpenAI-compatible API as the default target (base_url/model/api_key split into config, switchable to Ollama)
+- Frontend: **Phaser 3** (CDN + pure JS, no build tooling)
+- Action space: offline actions + **web search (direct DuckDuckGo implementation) + arXiv paper search** (included in v1 per spec revision)
+- Art: CC0 pixel asset packs (Kenney.nl etc.)
+- Heartbeat default 30 minutes (+ config switch to continuous mode)
+- Prompts in **English**, daily report in first-person Korean
+- code_experiment/skill execution: isolate when possible — bwrap/unshare natively on Linux, Docker on Windows, plain subprocess as the last-resort fallback
+- **Interest-philosophy refinements (from review)**: separate measurement of stated/revealed interest, relative anchors, environmental serendipity, reason→decision field order
+- **Knowledge wiki + MCP**: a searchable wiki (md originals + SQLite FTS index) + a read-only MCP server for external AIs
+- **Thought-process observability**: preserve full per-step LLM round-trip transcripts, viewable via UI/API/MCP
 
-| 항목 | 결정 | 근거 |
+| Item | Decision | Rationale |
 |---|---|---|
-| 스토리지 | JSONL + Markdown + state.json (SQLite는 위키 파생 인덱스만) | "한 디렉토리 통째 import 진단" → 사람/AI가 그대로 읽는 텍스트. 데이터량 극소 |
-| 스케줄링 | Python 내부 루프(장기 실행) + 락파일, 주기/연속 모드 겸용 | Windows에 cron 없음. 프로세스 상주가 연속 모드·선점에도 필수 |
-| 프로세스 | 에이전트 루프 / API 서버 **2개 프로세스 분리**, 데이터 디렉토리 공유 | 장애 격리(루프 죽어도 UI 생존), sync 루프 + async 웹 동시성 단순화 |
-| API 우선 | 모든 상호작용(대화 시작/종료, 구독, 선물)을 REST/SSE로 노출, 웹 UI는 클라이언트 중 하나 | 모바일 앱 등 다른 클라이언트 대비 (스펙 §2.4) |
-| 실시간 갱신 | SSE (EventSource) | 저빈도·단방향 이벤트에 부합. WebSocket 양방향 불필요, 폴링 낭비 |
-| 대화 | API 서버가 즉시 LLM 직접 호출 + **선점 프로토콜**(P7) + 기록 여부 유저 토글 | 즉시 응답 + "에이전트가 하던 일을 멈추고 응대"의 양립 |
-| 설정 | **JSON** (`config.json`, stdlib `json`) | 스펙 §5.6 확정 |
-| 의존성 | `fastapi`, `uvicorn`, `httpx`, `mcp` 4개 | 에이전트 코어는 httpx 외 표준 라이브러리. sqlite3/xml/html 파서는 stdlib |
+| Storage | JSONL + Markdown + state.json (SQLite only for the derived wiki index) | "Import one directory wholesale for diagnosis" → text that humans/AIs can read as-is. Data volume is tiny |
+| Scheduling | In-Python loop (long-running) + lock file, serving both interval/continuous modes | No cron on Windows. A resident process is also essential for continuous mode and preemption |
+| Processes | Agent loop / API server **split into 2 processes**, sharing the data directory | Failure isolation (UI survives if the loop dies), keeps sync loop + async web concurrency simple |
+| API first | Expose every interaction (chat start/end, subscription, gifts) via REST/SSE; the web UI is one client among others | In anticipation of other clients such as mobile apps (spec §2.4) |
+| Real-time updates | SSE (EventSource) | Fits low-frequency, one-way events. WebSocket bidirectionality unnecessary, polling wasteful |
+| Chat | API server calls the LLM directly and immediately + **preemption protocol** (P7) + user toggle for recording | Reconciles instant responses with "the agent stops what it was doing to respond" |
+| Config | **JSON** (`config.json`, stdlib `json`) | Confirmed by spec §5.6 |
+| Dependencies | 4 packages: `fastapi`, `uvicorn`, `httpx`, `mcp` | The agent core is standard library except httpx. sqlite3/xml/html parsers are stdlib |
 
-## P1. 디렉터리 구조와 모듈 분리
+## P1. Directory structure and module separation
 
-### 소스 저장소 (`tamagotchi/`)
+### Source repository (`tamagotchi/`)
 
 ```
 tamagotchi/
-├── config.example.json        # 커밋 / config.json은 .gitignore
+├── config.example.json        # committed / config.json is .gitignore'd
 ├── requirements.txt           # fastapi, uvicorn, httpx, mcp (dev: pytest)
-├── run_agent.py               # 진입점: 에이전트 루프 (--once, --mock 플래그)
-├── run_web.py                 # 진입점: API 서버
-├── run_mcp.py                 # 진입점: 지식 MCP 서버 (stdio, 읽기 전용)
-├── scripts/start_agent.ps1    # 크래시 자동 재시작 while 래퍼
+├── run_agent.py               # entry point: agent loop (--once, --mock flags)
+├── run_web.py                 # entry point: API server
+├── run_mcp.py                 # entry point: knowledge MCP server (stdio, read-only)
+├── scripts/start_agent.ps1    # while-loop wrapper with automatic crash restart
 ├── scripts/start_web.ps1
-├── soul/                      # Python 패키지
-│   ├── config.py              # config.json 로드+검증 (dataclass)
-│   ├── paths.py               # 데이터 디렉토리 경로/초기화
+├── soul/                      # Python package
+│   ├── config.py              # config.json load+validate (dataclass)
+│   ├── paths.py               # data directory paths/initialization
 │   ├── agent/
-│   │   ├── loop.py            # wake 스텝 오케스트레이션 (심장) + 선점 체크포인트
-│   │   ├── scheduler.py       # 주기/연속 모드 루프 + 리포트 시각 트리거
-│   │   ├── llm.py             # OpenAI-호환 클라이언트 (재시도/타임아웃/tool 루프/트랜스크립트)
-│   │   ├── prompts.py         # 영어 프롬프트 템플릿 (백지 철학의 핵심)
-│   │   ├── actions.py         # 내장 행동 정의 + 부수효과 (읽기 전용 = 소스 repo 소속)
-│   │   ├── webtools.py        # web_search(DuckDuckGo)/web_read/arxiv_search 도구
-│   │   ├── skills.py          # 자작 스킬 로딩/등록/실패 격리 (P8)
-│   │   ├── skill_runner.py    # 스킬 실행 러너 (subprocess 경유, 샌드박스 사다리)
-│   │   ├── preempt.py         # 대화 선점: control 파일 감시, 스냅샷 저장/복원 (P7)
-│   │   ├── context.py         # 컨텍스트 조립 (SOUL.md+최근스텝+스레드+inbox+세렌디피티)
-│   │   ├── soul.py            # SOUL.md 읽기/쓰기 + git 커밋
-│   │   ├── report.py          # 일일 한국어 1인칭 회고
-│   │   ├── sandbox.py         # 격리 백엔드 사다리 (code_experiment/스킬 공용)
-│   │   └── lock.py            # agent.lock (pid+timestamp, stale 탈취)
+│   │   ├── loop.py            # wake step orchestration (the heart) + preemption checkpoints
+│   │   ├── scheduler.py       # interval/continuous mode loop + report-time trigger
+│   │   ├── llm.py             # OpenAI-compatible client (retries/timeouts/tool loop/transcripts)
+│   │   ├── prompts.py         # English prompt templates (the core of the blank-slate philosophy)
+│   │   ├── actions.py         # built-in action definitions + side effects (read-only = belongs to source repo)
+│   │   ├── webtools.py        # web_search (DuckDuckGo)/web_read/arxiv_search tools
+│   │   ├── skills.py          # self-made skill loading/registration/failure isolation (P8)
+│   │   ├── skill_runner.py    # skill execution runner (via subprocess, sandbox ladder)
+│   │   ├── preempt.py         # chat preemption: watch control files, save/restore snapshots (P7)
+│   │   ├── context.py         # context assembly (SOUL.md+recent steps+thread+inbox+serendipity)
+│   │   ├── soul.py            # SOUL.md read/write + git commit
+│   │   ├── report.py          # daily first-person Korean retrospective
+│   │   ├── sandbox.py         # isolation backend ladder (shared by code_experiment/skills)
+│   │   └── lock.py            # agent.lock (pid+timestamp, stale takeover)
 │   ├── storage/
-│   │   ├── journal.py         # steps JSONL append/tail + revealed_interest 파생 지표
-│   │   ├── state.py           # state.json 원자적 쓰기 (tmp+os.replace)
-│   │   ├── inbox.py           # pending→delivered 큐
-│   │   ├── control.py         # data/control/ 신호 파일 (chat.json, paused_step.json)
+│   │   ├── journal.py         # steps JSONL append/tail + revealed_interest derived metrics
+│   │   ├── state.py           # state.json atomic writes (tmp+os.replace)
+│   │   ├── inbox.py           # pending→delivered queue
+│   │   ├── control.py         # data/control/ signal files (chat.json, paused_step.json)
 │   │   └── chatlog.py
 │   ├── knowledge/
-│   │   ├── wiki.py            # 위키: md 원본 CRUD + [[링크]] 파싱 + SQLite FTS5 인덱스 + rebuild
-│   │   ├── tools.py           # LLM function calling 도구 스키마+디스패처 (wiki+web+skill)
-│   │   └── mcp_server.py      # 읽기 전용 MCP 서버 (외부 AI 진단용)
+│   │   ├── wiki.py            # wiki: md-original CRUD + [[link]] parsing + SQLite FTS5 index + rebuild
+│   │   ├── tools.py           # LLM function-calling tool schemas+dispatcher (wiki+web+skill)
+│   │   └── mcp_server.py      # read-only MCP server (for external AI diagnosis)
 │   └── web/
-│       ├── server.py          # FastAPI 앱 + StaticFiles (UI는 정적 파일일 뿐, API에 UI 로직 없음)
-│       ├── api.py             # REST 라우트
-│       ├── events.py          # SSE (state.json mtime 감시)
-│       ├── chat.py            # 대화 세션 + 선점 신호 발행 + 기록 토글
+│       ├── server.py          # FastAPI app + StaticFiles (UI is just static files, no UI logic in the API)
+│       ├── api.py             # REST routes
+│       ├── events.py          # SSE (watches state.json mtime)
+│       ├── chat.py            # chat sessions + preemption signal emission + record toggle
 │       ├── gitview.py         # SOUL.md git log/diff (read-only)
-│       └── static/            # 웹 클라이언트 (API의 클라이언트 중 하나)
+│       └── static/            # web client (one client of the API)
 │           ├── index.html     # Phaser 3 CDN <script>
 │           ├── js/{main,api,room_scene,mapping,panels}.js
-│           └── assets/        # CC0 픽셀 스프라이트/타일
-└── tests/                     # conftest, fake_llm + 모듈별 테스트
+│           └── assets/        # CC0 pixel sprites/tiles
+└── tests/                     # conftest, fake_llm + per-module tests
 ```
 
-### 데이터 디렉토리 (에이전트의 "몸", 기본 `./data/`, gitignore)
+### Data directory (the agent's "body", default `./data/`, gitignored)
 
-**자체 git 저장소** — 소스와 분리, `data/`만 다른 AI에 통째 import하면 진단 가능.
+**Its own git repository** — separate from the source; importing just `data/` wholesale into another AI enables diagnosis.
 
 ```
 data/
-├── .git/                      # 영혼 성장사 전용 git
-├── SOUL.md                    # 정체성 (에이전트만 수정, 거의 빈 상태로 시드)
-├── state.json                 # UI용 현재 스냅샷 (커밋 안 함)
-├── journal/steps-YYYY-MM.jsonl  # 월별 로테이션, 스텝당 1줄
-├── notes/                     # 활동 산출물 .md
-├── wiki/                      # 지식 베이스: 페이지당 md 1개, [[링크]] 네트 (git 커밋)
-├── index/wiki.sqlite3         # FTS5+링크 그래프 파생 인덱스 (커밋 안 함, 재빌드 가능)
-├── skills/<name>/             # 자작 스킬: manifest.json + skill.py (git 커밋) — P8
-├── sandbox/                   # code_experiment 작업 디렉토리
-├── reports/YYYY-MM-DD.md      # 일일 한국어 회고
-├── inbox/{pending,delivered}.jsonl  # 관찰자 메시지/선물 큐
-├── chat/recorded.jsonl        # 기록 동의된 대화만
-├── transcripts/step-*.jsonl   # 스텝별 LLM 왕복 전문 (chain of thought — P2.5)
-├── control/                   # 프로세스 간 신호: chat.json, paused_step.json (커밋 안 함)
-├── logs/agent.log             # 운영 로그
+├── .git/                      # git dedicated to the soul's growth history
+├── SOUL.md                    # identity (agent-only edits, seeded nearly empty)
+├── state.json                 # current snapshot for the UI (not committed)
+├── journal/steps-YYYY-MM.jsonl  # monthly rotation, one line per step
+├── notes/                     # activity outputs, .md
+├── wiki/                      # knowledge base: one md per page, [[link]] net (git committed)
+├── index/wiki.sqlite3         # FTS5+link-graph derived index (not committed, rebuildable)
+├── skills/<name>/             # self-made skills: manifest.json + skill.py (git committed) — P8
+├── sandbox/                   # code_experiment working directory
+├── reports/YYYY-MM-DD.md      # daily Korean retrospective
+├── inbox/{pending,delivered}.jsonl  # observer message/gift queue
+├── chat/recorded.jsonl        # only conversations recorded with consent
+├── transcripts/step-*.jsonl   # full per-step LLM round-trips (chain of thought — P2.5)
+├── control/                   # inter-process signals: chat.json, paused_step.json (not committed)
+├── logs/agent.log             # operations log
 └── agent.lock
 ```
 
-역할 분리: SOUL.md + git = 정체성 / journal = 사건 기록. `soul.py`만 SOUL.md에 쓴다.
-커밋 대상: SOUL.md, notes/, wiki/, skills/, reports/ (+리포트 시 하루 1회 저널 동반 커밋).
+Role separation: SOUL.md + git = identity / journal = event record. Only `soul.py` writes SOUL.md.
+Commit targets: SOUL.md, notes/, wiki/, skills/, reports/ (+ a once-daily companion journal commit at report time).
 
-## P2. wake 스텝 프롬프트 구조
+## P2. Wake step prompt structure
 
 ```
-회상(context.py) → [호출1 ACT] 행동 선택+수행 (도구 tool-use 루프, 최대 5라운드)
-                → 산출물 notes/ 저장
-                → [호출2 REFLECT] 흥미 자기평가+결정 JSON (도구 없음)
-                → 저널 append → state.json 갱신 → (soul_update 시) SOUL.md 갱신+커밋
+recall (context.py) → [call 1 ACT] choose+perform action (tool-use loop, max 5 rounds)
+                → save output to notes/
+                → [call 2 REFLECT] interest self-assessment+decision JSON (no tools)
+                → journal append → state.json update → (on soul_update) SOUL.md update+commit
 ```
 
-행동/평가 분리 이유: 자유 서술과 구조화 JSON 혼합 시 파싱 취약, 완성된 산출물을 보고 평가하는 게 더 정직함.
+Why split action/assessment: mixing free prose with structured JSON is fragile to parse, and assessing a finished output is more honest.
 
-### 백지 철학 프롬프트 원칙 (영어 프롬프트)
-- 시스템 프롬프트는 상황·메커니즘만 서술. 성격 형용사("curious" 등)·예시 주제 금지
-- 행동 목록은 매 스텝 **순서 무작위 셔플** (위치 편향 방지)
-- 4가지 decision을 대칭적 한 줄 중립 정의로만 제시
-- 흥미 척도는 양 끝점만 앵커 (1 = not drawn at all, 10 = strongly drawn) + **상대 앵커 병행**: "직전 평가 대비 더/덜/비슷하게 끌리는가"(`interest_delta`)를 함께 물어 LLM 자기평가의 중앙 쏠림(6~8 뭉침)을 완화하고 시계열에 실제 등락을 만든다
-- **reason을 decision보다 먼저** 쓰게 배치 (이유→결정 순서로 사후 합리화 완화)
-- soul_update는 "durable한 것이 생겼을 때만 true, 불확실하면 false가 기본"
+### Blank-slate prompt principles (English prompts)
+- The system prompt describes only the situation and mechanics. No personality adjectives ("curious" etc.), no example topics
+- The action list is **randomly shuffled every step** (prevents position bias)
+- The four decisions are presented only as symmetric, one-line, neutral definitions
+- The interest scale anchors only the endpoints (1 = not drawn at all, 10 = strongly drawn) + a **relative anchor alongside**: also ask "compared to your previous assessment, are you more/less/similarly drawn?" (`interest_delta`) to counter the central clustering (bunching at 6–8) of LLM self-assessment and produce real rises and falls in the time series
+- Place **reason before decision** (reason→decision order mitigates post-hoc rationalization)
+- soul_update is "true only when something durable has emerged; when uncertain, false is the default"
 
-### ACT 응답 JSON
+### ACT response JSON
 ```json
-{"action": "<목록 중 하나>", "topic": "<한 줄>", "content": "<수행 결과 전문 markdown>"}
+{"action": "<one from the list>", "topic": "<one line>", "content": "<full markdown of the result>"}
 ```
 
-### REFLECT 응답 JSON (필드 순서 의도적: reason이 decision보다 앞)
+### REFLECT response JSON (field order deliberate: reason precedes decision)
 ```json
 {"interest": 1-10, "interest_delta": "more|less|same|first",
  "mood": "neutral|curious|excited|calm|bored|frustrated|tired|proud",
- "reason": "...", "decision": "deepen|shelve|abandon|new", "summary": "<한 줄>",
- "soul_update": {"update": false, "content": "<true일 때 SOUL.md 새 전문>", "reason": "..."}}
+ "reason": "...", "decision": "deepen|shelve|abandon|new", "summary": "<one line>",
+ "soul_update": {"update": false, "content": "<new full SOUL.md text when true>", "reason": "..."}}
 ```
-REFLECT user 메시지에 "이 스레드의 직전 흥미 평가"를 제시해 interest_delta의 비교 기준을 준다. delta와 절대값이 모순되면 둘 다 원문 보존 — 모순 자체도 관찰 데이터.
+The REFLECT user message presents "the previous interest assessment in this thread" to give interest_delta a comparison baseline. If the delta and the absolute value contradict, preserve both verbatim — the contradiction is itself observational data.
 
-### P2.5 사고 과정(chain of thought) 관찰 가능성
+### P2.5 Thought-process (chain of thought) observability
 
-- **트랜스크립트 보존**: `llm.py`가 스텝의 모든 LLM 왕복(messages 전문, 도구 라운드별 tool_calls·결과, 원시 응답)을 `data/transcripts/step-XXXXXX.jsonl`(호출 1건=1줄)로 저장. 저널에 `transcript_path` 연결. 회상에 무엇이 들어갔고 무엇이 나왔는지 재구성 가능
-- **reasoning 토큰 캡처**: 응답에 `reasoning_content`/`reasoning` 필드가 있으면 그대로 보존. 없으면 프롬프트로 유도하지 않음(강제 "생각 서술" 필드는 성능·중립성 훼손 — reason 필드가 최소한의 명시적 근거)
-- **열람 경로 3곳**: ① UI 스텝 상세 "사고 과정" 탭 ② `GET /api/step/{id}/transcript` ③ MCP `read_transcript(step_id)`
-- git 커밋 안 함(용량·잡음), 월별 하위 폴더. chat도 record=true면 동일 보존
+- **Transcript preservation**: `llm.py` saves every LLM round-trip of a step (full messages, per-tool-round tool_calls and results, raw responses) to `data/transcripts/step-XXXXXX.jsonl` (1 call = 1 line). The journal links via `transcript_path`. Reconstructible: what went into recall and what came out
+- **Reasoning-token capture**: if the response contains a `reasoning_content`/`reasoning` field, preserve it as-is. If absent, do not elicit it via prompting (a forced "describe your thinking" field harms performance and neutrality — the reason field is the minimal explicit rationale)
+- **Three viewing paths**: ① a "thought process" tab in the UI step detail ② `GET /api/step/{id}/transcript` ③ MCP `read_transcript(step_id)`
+- Not git-committed (volume/noise), monthly subfolders. Chat is preserved the same way when record=true
 
-### stated vs revealed 흥미 분리 (철학 보완의 핵심)
+### Separating stated vs revealed interest (the core of the philosophy refinement)
 
-자기 보고 interest는 **자기 보고(stated)**로 취급하고, **진짜 신호는 행동의 누적(revealed)**에서 별도 산출 — LLM 자기평가의 긍정 편향·confabulation 대응.
+Treat self-reported interest as **self-report (stated)**, and derive **the real signal from the accumulation of behavior (revealed)** separately — countering the positivity bias and confabulation of LLM self-assessment.
 
-- revealed 지표(저널에서 순수 함수로 파생, LLM 무관): 스레드 지속 길이 / shelve 후 실제 복귀 여부·횟수 / 같은 주제 재등장 빈도
-- 계산 위치: `journal.py`의 `revealed_interest(steps)` — 저장하지 않고 조회 시 계산
-- stated vs revealed **괴리는 1급 관찰 데이터**: API·UI에 나란히 노출, 일일 리포트 컨텍스트에도 포함해 에이전트가 자기 말과 행동의 괴리를 스스로 보게 한다
+- Revealed metrics (derived from the journal by a pure function, no LLM involved): thread persistence length / whether and how often the agent actually returns after a shelve / how frequently the same topic reappears
+- Where it is computed: `revealed_interest(steps)` in `journal.py` — computed on query, not stored
+- The stated-vs-revealed **gap is first-class observational data**: exposed side by side in the API and UI, and included in the daily report context so the agent sees the gap between its own words and actions for itself
 
-### 환경 우연성 (모델 prior 수렴 완화)
+### Environmental serendipity (mitigating model-prior convergence)
 
-같은 모델·같은 백지는 모델 기본 페르소나로 수렴할 위험 → 주제를 심지 않는 무작위성을 환경에서 공급 (개체성 = prior + 경로의 우연):
-- 행동 목록 셔플
-- **과거 노트 무작위 재부상**: 회상 조립 시 낮은 확률(`serendipity_rate` 0.3)로 과거 노트 1개를 "a note you wrote before"로 포함
-- 관찰자 inbox는 설계상 이미 외부 우연
-- 전부 주제 중립적(내용으로 고르지 않고 무작위 추첨) — 백지 철학과 충돌 없음
+The same model with the same blank slate risks converging to the model's default persona → supply randomness from the environment without seeding topics (individuality = prior + the contingency of the path):
+- Shuffling the action list
+- **Random resurfacing of past notes**: during recall assembly, with low probability (`serendipity_rate` 0.3), include one past note as "a note you wrote before"
+- The observer inbox is by design already external contingency
+- All of it is topic-neutral (chosen by random draw, not by content) — no conflict with the blank-slate philosophy
 
-### JSON 견고성 3단계 폴백
-`response_format: json_object` → 실패 시 최외곽 `{…}` 정규식 추출 → 교정 재호출 1회 → error 스텝 기록 후 스킵. interest는 clamp(1,10), enum 밖 값은 neutral 정규화 + `raw` 보존.
+### 3-stage JSON robustness fallback
+`response_format: json_object` → on failure, regex-extract the outermost `{…}` → one corrective re-call → record an error step and skip. interest is clamp(1,10); out-of-enum values normalize to neutral with `raw` preserved.
 
-## P3. 행동 공간 v1 (중립 동사)
+## P3. Action space v1 (neutral verbs)
 
-내장 행동: `free_write / revisit_notes / organize_notes / thought_experiment / code_experiment / web_explore / read_inbox(inbox 있을 때만) / rest` + 자작 스킬 `skill:<name>` (enabled인 것만, 중립 나열)
+Built-in actions: `free_write / revisit_notes / organize_notes / thought_experiment / code_experiment / web_explore / read_inbox (only when inbox is non-empty) / rest` + self-made skills as `skill:<name>` (only enabled ones, listed neutrally)
 
-### 웹 도구 (web_explore 중 tool-use 루프에서 사용 가능)
-- `web_search(query)`: DuckDuckGo HTML 엔드포인트(html.duckduckgo.com/html) 직접 파싱, API 키 불필요. 상위 N개 제목/URL/스니펫 반환
-- `web_read(url)`: httpx fetch + stdlib html.parser 기반 본문 텍스트 추출, `max_page_kb`(기본 500KB) 상한, 타임아웃 20초
-- `arxiv_search(query)`: arXiv Atom API(export.arxiv.org/api/query) + `xml.etree` 파싱 — 제목/저자/초록 반환
-- 안전: 도메인 차단 목록 없음(중립성) 대신 크기·시간 상한, 방문 URL 저널 기록. 검색어·URL은 전적으로 에이전트 선택
+### Web tools (available in the tool-use loop during web_explore)
+- `web_search(query)`: directly parses the DuckDuckGo HTML endpoint (html.duckduckgo.com/html), no API key needed. Returns top-N titles/URLs/snippets
+- `web_read(url)`: httpx fetch + body text extraction via the stdlib html.parser, `max_page_kb` cap (default 500KB), 20-second timeout
+- `arxiv_search(query)`: arXiv Atom API (export.arxiv.org/api/query) + `xml.etree` parsing — returns titles/authors/abstracts
+- Safety: no domain blocklist (neutrality); instead, size and time caps, and visited URLs recorded in the journal. Search terms and URLs are entirely the agent's choice
 
-### code_experiment / 스킬 실행 격리 — 백엔드 사다리 (`sandbox.py`, `backend:"auto"`)
-1. **Linux 네이티브 (최우선, Docker 불필요)**: `bwrap`(bubblewrap) — `--unshare-all --die-with-parent --bind data/sandbox /work ...`, 비루트 네임스페이스 격리(네트워크·PID·마운트 차단), 데몬 없음, 오버헤드 ~ms. bwrap 없으면 `unshare --user --net --pid --map-root-user` 폴백. unprivileged userns 차단 배포판이면 다음 단계
-2. **Docker** (`docker info` 성공 시): `--network none`, 볼륨 마운트, `--memory`/`--pids-limit` — Windows에선 유일한 강격리
-3. **plain subprocess 폴백**: cwd 한정, 환경변수 최소화, 타임아웃 — 격리 아님을 명시
+### code_experiment / skill execution isolation — backend ladder (`sandbox.py`, `backend:"auto"`)
+1. **Linux native (first choice, no Docker needed)**: `bwrap` (bubblewrap) — `--unshare-all --die-with-parent --bind data/sandbox /work ...`, unprivileged namespace isolation (blocks network/PID/mounts), no daemon, ~ms overhead. If bwrap is absent, fall back to `unshare --user --net --pid --map-root-user`. On distros that block unprivileged userns, move to the next rung
+2. **Docker** (when `docker info` succeeds): `--network none`, volume mount, `--memory`/`--pids-limit` — the only strong isolation on Windows
+3. **Plain subprocess fallback**: cwd-confined, minimized environment variables, timeout — explicitly not isolation
 
-공통: 타임아웃(기본 10초), stdout/stderr 캡처. 선택된 백엔드를 기동 로그와 저널 `sandbox_backend`에 기록.
+Common: timeout (default 10 seconds), stdout/stderr capture. The selected backend is recorded in the startup log and in the journal's `sandbox_backend`.
 
-## P3.5 지식 저장소 — 위키 (검색 가능한 네트)
+## P3.5 Knowledge store — wiki (a searchable net)
 
-markdown 노트만으로는 검색이 안 되는 문제의 대응.
+The response to the problem that markdown notes alone are not searchable.
 
-### 저장 구조 (원본 md + 파생 SQLite — 진단성·검색성 양립)
-- **원본**: `data/wiki/<slug>.md` — frontmatter + 본문, `[[다른-페이지]]` 링크로 llm-wiki 스타일 네트. git 커밋(지식 성장도 diff로 관찰)
-- **파생 인덱스**: `data/index/wiki.sqlite3` — `pages`, `links(src,dst)`(백링크 그래프), FTS5 `pages_fts`. **항상 md에서 전체 재빌드 가능**(`rebuild_index()`, 기동 시 mtime 불일치 감지 자동 재빌드). 커밋 안 함
-- sqlite3·FTS5는 stdlib — 의존성 0
+### Storage structure (original md + derived SQLite — diagnosability and searchability both)
+- **Originals**: `data/wiki/<slug>.md` — frontmatter + body, an llm-wiki-style net via `[[other-page]]` links. Git committed (knowledge growth is also observable as diffs)
+- **Derived index**: `data/index/wiki.sqlite3` — `pages`, `links(src,dst)` (backlink graph), FTS5 `pages_fts`. **Always fully rebuildable from md** (`rebuild_index()`, automatic rebuild on startup when an mtime mismatch is detected). Not committed
+- sqlite3 and FTS5 are stdlib — 0 dependencies
 
-### 에이전트 접근: function calling 도구 루프
-ACT 호출을 표준 chat completions `tools` 기반 **소형 tool-use 루프**로 (프레임워크 불필요):
-- wiki 도구 4종: `wiki_search`(FTS) / `wiki_read`(본문+백링크) / `wiki_write`(생성/갱신, [[링크]] 자동 인덱싱) / `wiki_backlinks`
-- 루프: tool_calls → 디스패치 → 결과 append → 재호출, 최대 `max_tool_rounds`(기본 5) 후 최종 ACT JSON 강제
-- 도구 설명 중립("store something you want to find again"), 쓰기/안 쓰기는 에이전트 자유
-- REFLECT는 도구 없음(평가 오염 방지). 저널에 `wiki_ops` 기록
+### Agent access: function-calling tool loop
+Make the ACT call a **small tool-use loop** based on standard chat completions `tools` (no framework needed):
+- 4 wiki tools: `wiki_search` (FTS) / `wiki_read` (body+backlinks) / `wiki_write` (create/update, [[link]] auto-indexing) / `wiki_backlinks`
+- Loop: tool_calls → dispatch → append results → re-call, up to `max_tool_rounds` (default 5), then force the final ACT JSON
+- Tool descriptions are neutral ("store something you want to find again"); writing or not writing is the agent's choice
+- REFLECT gets no tools (prevents assessment contamination). `wiki_ops` recorded in the journal
 
-### 외부 접근: 읽기 전용 MCP 서버 (`run_mcp.py`)
-Claude Code 등 외부 AI의 구조적 진단용. 공식 `mcp` Python SDK.
-- 도구: `wiki_search`, `wiki_read`, `wiki_list`, `read_soul`, `query_journal(limit, since)`, `read_report(date)`, `read_transcript(step_id)`
-- **읽기 전용** — 쓰기 주체는 에이전트 프로세스 하나 원칙 유지. SQLite도 read-only 연결
-- 등록: `claude mcp add soul-wiki -- python run_mcp.py --data-dir ./data`
+### External access: read-only MCP server (`run_mcp.py`)
+For structured diagnosis by external AIs such as Claude Code. Official `mcp` Python SDK.
+- Tools: `wiki_search`, `wiki_read`, `wiki_list`, `read_soul`, `query_journal(limit, since)`, `read_report(date)`, `read_transcript(step_id)`
+- **Read-only** — preserves the principle that the agent process is the sole writer. SQLite is also opened with a read-only connection
+- Registration: `claude mcp add soul-wiki -- python run_mcp.py --data-dir ./data`
 
-## P4. 저널 스키마 & UI 매핑
+## P4. Journal schema & UI mapping
 
-### 스텝 레코드 (JSONL 1줄)
+### Step record (one JSONL line)
 ```json
 {"id":"step-000123","ts":"...","kind":"wake_step|report|error","action":"...","topic":"...",
  "thread_id":"th-0007","content_path":"notes/....md","interest":7,"interest_delta":"more",
@@ -344,48 +346,48 @@ Claude Code 등 외부 AI의 구조적 진단용. 공식 `mcp` Python SDK.
  "inbox_delivered":["in-0004"],"llm":{"model":"...","tokens_in":0,"tokens_out":0,"latency_ms":0},"error":null}
 ```
 
-스레드 규칙: deepen→같은 thread_id 유지, shelve→state.json shelved 목록 보관, abandon/new→다음 스텝 새 thread_id.
+Thread rules: deepen→keep the same thread_id, shelve→kept in the state.json shelved list, abandon/new→new thread_id on the next step.
 
-### state.json (단일 스냅샷, 원자적 교체)
-`status(awake|idle|chatting|error), last_step 요약, current_thread{topic,steps,interest_series}, shelved_threads, revealed{top_threads,stated_vs_revealed_note}, next_wake_at, today_report, updated_at`
+### state.json (single snapshot, atomic replacement)
+`status(awake|idle|chatting|error), last_step summary, current_thread{topic,steps,interest_series}, shelved_threads, revealed{top_threads,stated_vs_revealed_note}, next_wake_at, today_report, updated_at`
 
-### 매핑 규칙 (`mapping.js` 단일 소스)
-- **행동→위치/애니메이션**: free_write=책상·쓰기 / revisit_notes=책장·읽기 / organize_notes=책장·정리 / thought_experiment=창가 러그·생각구름 / code_experiment=컴퓨터·타이핑 / web_explore=창가 노트북·스크롤 / skill:*=작업대·공구질 / read_inbox=우편함·열기 / rest=침대·Zzz / chatting=문 앞·대화 모션 / idle=배회 / stale·error=중앙 정지+"…"
-- **interest→표정 강도**: 1–3 처짐·저채도 / 4–6 중립 / 7–8 미소·반짝 / 9–10 큰 반짝+파티클
-- **decision→1회 이펙트**: deepen=전구+불꽃 / new="!"+자리이동 / shelve=노트 꽂기 / abandon=종이 구겨 버리기
-- **말풍선**: last_step.summary 30초 표시, 클릭 시 산출물 전문 패널. wiki 쓰기 있던 스텝은 책상 위 "위키 노트" 소품 반짝임
+### Mapping rules (single source: `mapping.js`)
+- **Action→position/animation**: free_write=desk, writing / revisit_notes=bookshelf, reading / organize_notes=bookshelf, tidying / thought_experiment=rug by the window, thought cloud / code_experiment=computer, typing / web_explore=laptop by the window, scrolling / skill:*=workbench, tinkering / read_inbox=mailbox, opening / rest=bed, Zzz / chatting=at the door, talking motion / idle=wandering / stale·error=stopped at center + "…"
+- **interest→expression intensity**: 1–3 drooping, desaturated / 4–6 neutral / 7–8 smile, sparkle / 9–10 big sparkle + particles
+- **decision→one-shot effect**: deepen=lightbulb+sparks / new="!"+moving spots / shelve=slotting a note onto the shelf / abandon=crumpling paper and tossing it
+- **Speech bubble**: shows last_step.summary for 30 seconds; clicking opens the full-output panel. On steps that wrote to the wiki, a "wiki note" prop on the desk glints
 
-## P5. 프로세스 구성 & 장애 대응
+## P5. Process composition & failure handling
 
-**2 프로세스**: `run_agent.py`(동기 루프) + `run_web.py`(uvicorn, API 서버). API 서버는 데이터 디렉토리 read-only, 예외적으로 inbox append + chat append + **control/chat.json**(선점 신호)만 씀. inbox는 `inbox.lock` 소형 락 + "웹은 append만, 에이전트는 스텝 시작 시 pending→delivered 원자적 이동" 프로토콜.
+**2 processes**: `run_agent.py` (synchronous loop) + `run_web.py` (uvicorn, API server). The API server treats the data directory as read-only, exceptionally writing only inbox append + chat append + **control/chat.json** (the preemption signal). The inbox uses a small `inbox.lock` plus the protocol "the web only appends; the agent atomically moves pending→delivered at step start".
 
-| 장애 | 대응 |
+| Failure | Response |
 |---|---|
-| LLM 다운/타임아웃 | 지수 백오프 3회(1s/4s/16s, 타임아웃 120s) → error 스텝 기록+스킵. 연속 5회 실패 시 서킷브레이커(간격 4배, 성공 시 복원). 연속 모드에서도 동일 적용 |
-| 루프 크래시 | 스텝 단위 try/except 격리 + `start_agent.ps1` while 재시작(백오프). UI는 updated_at이 기준 간격 2배 초과 시 stale 표시 |
-| 스텝 겹침/장기 스텝 | 단일 프로세스라 내부 겹침 불가. 이중 기동은 agent.lock(pid 생존 검사, stale 탈취)으로 거부. 주기 초과 스텝은 죽이지 않고 완주시키되 step_timeout_minutes(하드 데드라인)는 별도 적용, 종료 후 min_step_gap_seconds 경과 시 자동으로 다음 스텝 시작(아래 스케줄러 규칙) |
-| git 경합 | 데이터 git 쓰기 주체는 에이전트 프로세스 하나뿐(웹·MCP는 읽기만). 커밋 실패 시 1회 재시도, 실패해도 파일은 갱신됨 → 다음 커밋에 포함 |
-| state.json 파손 읽기 | tmp+os.replace 원자 교체, 웹은 파싱 실패 시 직전 캐시 유지 |
-| 리포트 실패 | 날짜 파일 부재로 판정, 매 스텝 사이 재시도 (멱등) |
-| 스킬 크래시 | P8 참조 — subprocess 격리 + 연속 실패 자동 비활성 |
+| LLM down/timeout | Exponential backoff, 3 tries (1s/4s/16s, 120s timeout) → record an error step + skip. After 5 consecutive failures, circuit breaker (4x interval, restored on success). Applies equally in continuous mode |
+| Loop crash | Per-step try/except isolation + `start_agent.ps1` while-loop restart (with backoff). The UI shows stale when updated_at exceeds 2x the base interval |
+| Step overlap / long steps | Single process, so no internal overlap. Double launch is refused via agent.lock (pid liveness check, stale takeover). Steps exceeding the interval are not killed but run to completion, while step_timeout_minutes (hard deadline) applies separately; after completion, the next step starts automatically once min_step_gap_seconds has elapsed (scheduler rules below) |
+| Git contention | The agent process is the sole writer to the data git (web and MCP only read). On commit failure, retry once; even if it fails, the files are updated → included in the next commit |
+| Corrupted state.json read | Atomic replacement via tmp+os.replace; on parse failure the web keeps the previous cache |
+| Report failure | Detected by the absence of the dated file, retried between every step (idempotent) |
+| Skill crash | See P8 — subprocess isolation + auto-disable after consecutive failures |
 
-**스케줄러** (`scheduler.py`): `while True: check_preempt(); check_report(); run_step(); wait()`.
+**Scheduler** (`scheduler.py`): `while True: check_preempt(); check_report(); run_step(); wait()`.
 
-**장기 실행 스텝 처리 원칙 — 주기 초과는 허용, 단 스텝 타임아웃은 별도로 존재.**
+**Long-running step policy — exceeding the interval is allowed, but a separate step timeout exists.**
 
-- **주기 초과 허용**: 스텝이 heartbeat 주기보다 오래 걸리는 것은 정상 동작이며 주기를 이유로 죽이거나 스킵하지 않는다. 대신 **최소 격리 간격**(`min_step_gap_seconds`, 기본 60초)을 보장한다:
-  - 다음 스텝 시작 시각 = `max(이전 스텝 시작 + heartbeat 주기, 이전 스텝 종료 + min_step_gap_seconds)`
-  - 예: 주기 10분인데 스텝이 12분 걸림 → 스킵하지 않고, 종료 후 60초 쉬고 자동으로 다음 스텝 시작
-  - 예: 주기 10분에 스텝이 1분 걸림 → 정상적으로 시작 기준 10분 주기 유지
-  - `mode:"continuous"`: 주기 항 없이 `이전 스텝 종료 + min_step_gap_seconds`만 적용 (두 모드가 같은 격리 파라미터 공유)
-- **스텝 타임아웃** (`step_timeout_minutes`, 주기와 독립 — 예: 주기 10분/타임아웃 15분, 주기보다 크게 설정 권장): 스텝 시작부터의 하드 데드라인. 초과 시 스텝을 중단하고 그때까지의 부분 산출물·트랜스크립트를 보존한 채 `kind:"error"`, `error:"step_timeout"`으로 저널 기록 후 다음 스텝으로 진행. 폭주(무한 도구 루프, 스킬 행 등)의 최종 방어선이며, 개별 LLM 호출·도구 타임아웃보다 상위의 안전망
-  - 집행 방식: 동기 루프이므로 각 LLM 호출/도구 실행 **경계마다 데드라인 검사** — 개별 호출 자체에 타임아웃(LLM 120초, 도구 10~20초)이 있으므로 경계 검사만으로 데드라인 초과가 한 호출 길이 이상 밀리지 않음
-  - 서킷브레이커에는 집계하지 않음 (API 장애가 아니라 "작업이 길었음"이므로)
-- 리포트 시각 체크는 두 모드 공통, `Asia/Seoul` `zoneinfo` 기준. state.json의 `next_wake_at`은 위 규칙으로 계산된 실제 예정 시각을 기록(UI가 정확한 카운트다운 표시)
+- **Interval overrun allowed**: a step taking longer than the heartbeat interval is normal behavior and is never killed or skipped because of the interval. Instead, a **minimum separation gap** (`min_step_gap_seconds`, default 60s) is guaranteed:
+  - Next step start time = `max(previous step start + heartbeat interval, previous step end + min_step_gap_seconds)`
+  - Example: interval 10 min, step takes 12 min → no skip; rest 60s after completion, then the next step starts automatically
+  - Example: interval 10 min, step takes 1 min → the normal 10-minute cadence from start times is kept
+  - `mode:"continuous"`: only `previous step end + min_step_gap_seconds` applies, without the interval term (both modes share the same separation parameter)
+- **Step timeout** (`step_timeout_minutes`, independent of the interval — e.g. interval 10 min / timeout 15 min; setting it larger than the interval is recommended): a hard deadline from step start. When exceeded, the step is aborted, the partial outputs and transcript up to that point are preserved, journaled as `kind:"error"`, `error:"step_timeout"`, and the loop proceeds to the next step. It is the final line of defense against runaways (infinite tool loops, hung skills, etc.), a safety net above individual LLM-call and tool timeouts
+  - Enforcement: since the loop is synchronous, **check the deadline at every LLM-call/tool-execution boundary** — individual calls have their own timeouts (LLM 120s, tools 10–20s), so boundary checks alone keep deadline overrun within one call's length
+  - Not counted toward the circuit breaker (it's "the work took long", not an API failure)
+- The report-time check is common to both modes, based on `Asia/Seoul` `zoneinfo`. state.json's `next_wake_at` records the actual scheduled time computed by the rules above (the UI shows an accurate countdown)
 
-## P6. 설정 — config.json (스펙 확정: JSON)
+## P6. Configuration — config.json (spec confirmed: JSON)
 
-`config.example.json` 커밋 / `config.json` gitignore. JSON은 주석 불가 → 각 키 설명은 example 옆 README 표에 기재.
+`config.example.json` committed / `config.json` gitignored. JSON allows no comments → each key is described in a README table next to the example.
 
 ```json
 {
@@ -409,88 +411,88 @@ Claude Code 등 외부 AI의 구조적 진단용. 공식 `mcp` Python SDK.
 }
 ```
 
-api_key 해석: `api_key` 직접 기입 → `api_key_env` 환경변수 → 없으면 키 없이 동작
-(Authorization 헤더 생략 — 로컬 Ollama 등 키 불필요 엔드포인트 대응, 스펙 개정 2026-07-16).
+api_key resolution: `api_key` written directly → `api_key_env` environment variable → if neither, operate without a key
+(the Authorization header is omitted — supports keyless endpoints like local Ollama; spec revision 2026-07-16).
 
-## P7. 대화 선점 (preemption)
+## P7. Chat preemption
 
-**신호 전달 = control 파일** (프로세스 분리 구조에서 IPC 최소화, state.json 버스 패턴과 동일):
+**Signal delivery = control files** (minimizes IPC in the split-process architecture, same pattern as the state.json bus):
 
-1. **대화 시작**: `POST /api/chat` 첫 메시지 수신 시 API 서버가 `data/control/chat.json` `{active:true, session_id, started_at, last_message_at}` 원자적 기록. 대화 응답 자체는 API 서버가 즉시 LLM 직접 호출(현재 SOUL.md + 최근 스텝 + 세션 턴) — 유저는 기다리지 않음
-2. **루프 중단 (현재 지점까지만)**: 에이전트 루프는 **LLM 호출 경계마다**(ACT 시작 전 / 각 tool 라운드 사이 / REFLECT 전) `chat.json`을 확인. active면 진행 중이던 호출은 완료하고, 그 지점에서 멈춤
-3. **상태 보존**: 중단 시 `data/control/paused_step.json`에 스냅샷 저장 — `{step_id, phase:"act|tools|reflect", messages_so_far, tool_rounds_done, act_result(있으면), started_at}`. state.status="chatting" 갱신(캐릭터가 문 앞으로 옴)
-4. **복귀**: 유저가 `POST /api/chat/end`를 호출하거나, `last_message_at`이 `idle_end_seconds`(기본 180초) 초과하면 API 서버가 chat.json을 inactive로 갱신. 루프는 `preempt_poll_seconds`(2초) 간격으로 폴링하다가 스냅샷을 복원해 **중단 지점부터 이어서** 실행. `preempt_max_wait_minutes`(30분) 초과 시 대화 중이라도 스냅샷 복원 후 재개(다음 경계에서 다시 양보)
-5. **크래시 안전**: 루프 재시작 시 paused_step.json이 있으면 phase에 따라 복원 시도, 복원 불가(메시지 불일치 등)면 해당 스텝을 error로 기록하고 새 스텝 시작. 저널에 `preempted:true` 표시
-6. **기록 토글**: record=false(기본)는 서버 메모리 세션만(재시작 소멸, UI 명시), record=true는 `chat/recorded.jsonl` + inbox 경유로 다음 wake에 편입 ("기억"으로 남는 것은 record=true뿐임을 UI에 정직하게 표기)
+1. **Chat start**: on receiving the first message at `POST /api/chat`, the API server atomically writes `data/control/chat.json` `{active:true, session_id, started_at, last_message_at}`. The chat response itself is an immediate, direct LLM call by the API server (current SOUL.md + recent steps + session turns) — the user does not wait
+2. **Loop pause (only up to the current point)**: the agent loop checks `chat.json` **at every LLM-call boundary** (before ACT starts / between tool rounds / before REFLECT). If active, the in-flight call is completed, then it stops at that point
+3. **State preservation**: on pause, a snapshot is saved to `data/control/paused_step.json` — `{step_id, phase:"act|tools|reflect", messages_so_far, tool_rounds_done, act_result (if any), started_at}`. state.status="chatting" is updated (the character comes to the door)
+4. **Resume**: when the user calls `POST /api/chat/end`, or `last_message_at` exceeds `idle_end_seconds` (default 180s), the API server marks chat.json inactive. The loop, polling at `preempt_poll_seconds` (2s) intervals, restores the snapshot and **continues from the pause point**. If `preempt_max_wait_minutes` (30 min) is exceeded, the snapshot is restored and execution resumes even mid-chat (yielding again at the next boundary)
+5. **Crash safety**: on loop restart, if paused_step.json exists, attempt restoration according to phase; if unrestorable (message mismatch etc.), record that step as an error and start a new step. The journal marks `preempted:true`
+6. **Record toggle**: record=false (default) keeps the session only in server memory (lost on restart, stated in the UI); record=true goes to `chat/recorded.jsonl` + via the inbox into the next wake (the UI honestly states that only record=true conversations become "memories")
 
-## P8. 자작 스킬 시스템
+## P8. Self-made skill system
 
-**내장 스킬 = 소스 repo의 `actions.py`/`webtools.py`** — 에이전트는 데이터 디렉토리에만 쓸 수 있으므로 구조적으로 변경 불가(읽기 전용 요구 충족).
+**Built-in skills = the source repo's `actions.py`/`webtools.py`** — the agent can write only to the data directory, so they are structurally immutable (satisfies the read-only requirement).
 
-- **저장 위치**: `data/skills/<name>/` — `manifest.json` + `skill.py`. 데이터 git으로 버전 관리(스킬의 탄생·수정도 성장사)
-- **인터페이스 규격**:
+- **Storage location**: `data/skills/<name>/` — `manifest.json` + `skill.py`. Version-controlled in the data git (the birth and revision of skills are part of the growth history too)
+- **Interface specification**:
   - `manifest.json`: `{"name", "description", "entry": "skill.py", "version": 1, "enabled": true, "failures": 0, "created_at"}`
-  - `skill.py`: `def run(params: dict) -> dict` — 반환 `{"output": "<markdown>"}`. 표준 라이브러리만 import 가능(러너가 검사)
-- **등록**: ACT 도구 루프에 `skill_write(name, description, code)` 도구 제공(중립 문구: "define a new activity you can do later"). 성공 시 다음 스텝부터 행동 목록에 `skill:<name>`으로 노출 — 만들지/쓸지/버릴지 전적으로 에이전트 자유
-- **로딩·실행**: import하지 않는다. `skill_runner.py`가 **별도 subprocess**로 실행(P3의 샌드박스 사다리 그대로 통과) — params를 stdin JSON으로, 결과를 stdout JSON으로. 에이전트 프로세스와 메모리 완전 분리
-- **실패 격리**: 타임아웃(`skills.timeout_seconds` 20초)/예외/비-JSON 출력 → 해당 스텝은 error 아닌 "스킬 실패 결과"로 정상 진행(루프는 절대 안 죽음), manifest `failures`++. `auto_disable_after_failures`(3회) 도달 시 `enabled:false` — 비활성 사실을 다음 컨텍스트에 알림(고치거나 버리는 것도 에이전트 자유)
-- **보안 한계 명시**: subprocess 폴백 모드에서는 강격리가 아님을 README와 기동 로그에 정직하게 표기
+  - `skill.py`: `def run(params: dict) -> dict` — returns `{"output": "<markdown>"}`. Only standard-library imports allowed (the runner checks)
+- **Registration**: a `skill_write(name, description, code)` tool is provided in the ACT tool loop (neutral wording: "define a new activity you can do later"). On success, it appears in the action list as `skill:<name>` from the next step — creating/using/discarding it is entirely the agent's choice
+- **Loading/execution**: never imported. `skill_runner.py` runs it in a **separate subprocess** (passing through P3's sandbox ladder as-is) — params as stdin JSON, result as stdout JSON. Complete memory separation from the agent process
+- **Failure isolation**: timeout (`skills.timeout_seconds` 20s)/exception/non-JSON output → the step proceeds normally with a "skill failure result" rather than an error (the loop never dies), and the manifest's `failures`++ increments. On reaching `auto_disable_after_failures` (3), set `enabled:false` — the disablement is announced in the next context (fixing it or abandoning it is also the agent's choice)
+- **Security limits stated**: in plain-subprocess fallback mode, the README and startup log honestly state that this is not strong isolation
 
-## P9. 마일스톤 (완료 기준 포함)
+## P9. Milestones (with completion criteria)
 
-**M0 — 스캐폴딩**: requirements.txt, .gitignore, config.example.json, `config.py`, `paths.py`, tests/conftest.py. `init_data_dir()`: data/ 트리 + 거의 빈 SOUL.md 시드 + git init/최초 커밋.
-✓ data/ 생성, config 로드 테스트 green.
+**M0 — Scaffolding**: requirements.txt, .gitignore, config.example.json, `config.py`, `paths.py`, tests/conftest.py. `init_data_dir()`: data/ tree + nearly-empty SOUL.md seed + git init/initial commit.
+✓ data/ created, config load tests green.
 
-**M1 — 최소 wake 루프 (mock)**: llm.py, prompts.py, context.py, loop.py, actions.py(free_write/rest), soul.py, lock.py, journal.py, state.py, fake_llm.py, run_agent.py(`--once --mock`).
-✓ 1스텝 → JSONL 1줄 + notes 산출물 + transcripts 왕복 전문 + state.json 갱신 + soul_update 시 git 커밋. JSON 폴백 3단계 테스트 포함 pytest green.
+**M1 — Minimal wake loop (mock)**: llm.py, prompts.py, context.py, loop.py, actions.py (free_write/rest), soul.py, lock.py, journal.py, state.py, fake_llm.py, run_agent.py (`--once --mock`).
+✓ 1 step → 1 JSONL line + notes output + full transcripts round-trips + state.json update + git commit on soul_update. pytest green including 3-stage JSON fallback tests.
 
-**M2 — 오프라인 행동 전체 + 스레드 + 실 API**: actions.py 확장, sandbox.py(백엔드 사다리), 스레드/shelved 관리, inbox.py.
-✓ 실제 API 연속 5스텝(간격 단축), deepen 시 thread_id 유지, sandbox 타임아웃 테스트, pending→delivered 검증.
+**M2 — All offline actions + threads + real API**: actions.py expansion, sandbox.py (backend ladder), thread/shelved management, inbox.py.
+✓ 5 consecutive steps against the real API (shortened interval), thread_id kept on deepen, sandbox timeout test, pending→delivered verification.
 
-**M3 — 지식 위키 + tool-use 루프**: wiki.py(md CRUD, [[링크]], FTS5, rebuild), tools.py, llm.py tools 루프, loop.py 통합.
-✓ wiki_write→md+인덱스 반영, FTS 히트, 백링크, md 수동 수정 후 rebuild 정합성, FakeLLM tool_calls 시나리오(최대 라운드 강제 포함) green.
+**M3 — Knowledge wiki + tool-use loop**: wiki.py (md CRUD, [[links]], FTS5, rebuild), tools.py, llm.py tools loop, loop.py integration.
+✓ wiki_write→reflected in md+index, FTS hits, backlinks, rebuild consistency after manual md edits, FakeLLM tool_calls scenarios (including max-round forcing) green.
 
-**M4 — 웹 행동**: webtools.py — web_search(DuckDuckGo)/web_read/arxiv_search, web_explore 행동 등록.
-✓ httpx MockTransport로 DDG/arXiv 응답 파싱 테스트 green, 실 네트워크 1회 수동 확인, 크기/타임아웃 상한 동작.
+**M4 — Web actions**: webtools.py — web_search (DuckDuckGo)/web_read/arxiv_search, web_explore action registration.
+✓ DDG/arXiv response parsing tests green with httpx MockTransport, one manual real-network check, size/timeout caps working.
 
-**M5 — 스케줄러(주기/연속) + 일일 리포트**: scheduler.py, report.py, run_agent.py 장기 실행, start_agent.ps1.
-✓ heartbeat 모드 구동, `mode:"continuous"` 전환 시 min_step_gap 간격 연쇄 실행, **장기 스텝 테스트**(주기보다 오래 걸리는 FakeLLM 스텝 → 스킵/강제종료 없이 완주 후 min_step_gap 뒤 자동 재개, next_wake_at 정확성), **스텝 타임아웃 테스트**(step_timeout 초과 시 경계에서 중단 → 부분 산출물 보존 + error:"step_timeout" 기록 → 다음 스텝 정상 진행, 서킷브레이커 미집계 확인), 리포트 시각에 한국어 1인칭 리포트 생성·커밋, 이중 기동 락 거부, 서킷브레이커 테스트.
+**M5 — Scheduler (interval/continuous) + daily report**: scheduler.py, report.py, run_agent.py long-running mode, start_agent.ps1.
+✓ Heartbeat mode runs; switching to `mode:"continuous"` chains steps at min_step_gap intervals; **long-step test** (a FakeLLM step longer than the interval → runs to completion without skip/kill, auto-resumes after min_step_gap, next_wake_at accuracy); **step-timeout test** (step_timeout exceeded → aborted at a boundary → partial outputs preserved + error:"step_timeout" recorded → next step proceeds normally, confirmed not counted toward circuit breaker); Korean first-person report generated and committed at report time; double-launch lock refusal; circuit-breaker test.
 
-**M6 — API 서버 + SSE + 대화 선점**: server.py, api.py, events.py, chat.py, control.py, preempt.py, gitview.py, chatlog.py, run_web.py.
-✓ TestClient 전 엔드포인트 green, 스텝 발생 → SSE 1초 내 수신, **선점 E2E**: 스텝 진행 중 chat 시작 → 루프가 호출 경계에서 멈추고 status="chatting" → chat/end 또는 타임아웃 → 스냅샷 복원 재개(FakeLLM으로 자동 테스트), record=true 시 recorded.jsonl + inbox 반영.
+**M6 — API server + SSE + chat preemption**: server.py, api.py, events.py, chat.py, control.py, preempt.py, gitview.py, chatlog.py, run_web.py.
+✓ All endpoints green under TestClient; a step occurring → SSE received within 1 second; **preemption E2E**: chat starts mid-step → the loop stops at a call boundary and status="chatting" → chat/end or timeout → snapshot-restored resume (auto-tested with FakeLLM); with record=true, recorded.jsonl + inbox reflected.
 
-**M7 — Phaser UI**: index.html(Phaser 3 CDN), room_scene.js, mapping.js, panels.js, CC0 에셋.
-✓ 스텝 발생 → 캐릭터 이동·애니메이션·말풍선 자동 반영, chatting 시 문 앞 이동, SOUL.md diff 타임라인, 사고 과정 탭, 위키 검색/그래프 뷰, 대화/선물 왕복.
+**M7 — Phaser UI**: index.html (Phaser 3 CDN), room_scene.js, mapping.js, panels.js, CC0 assets.
+✓ A step occurring → character movement/animation/speech bubble reflected automatically, moves to the door when chatting, SOUL.md diff timeline, thought-process tab, wiki search/graph view, chat/gift round-trips.
 
-**M8 — 스킬 시스템**: skills.py, skill_runner.py, skill_write 도구, manifest 수명주기.
-✓ FakeLLM 시나리오로 스킬 작성→등록→다음 스텝 목록 노출→실행 성공/타임아웃/크래시/3연속 실패 자동 비활성 전부 테스트 green. 루프 생존 확인.
+**M8 — Skill system**: skills.py, skill_runner.py, skill_write tool, manifest lifecycle.
+✓ FakeLLM scenarios test skill write→register→exposed in next step's list→run success/timeout/crash/auto-disable after 3 consecutive failures, all green. Loop survival confirmed.
 
-**M9 — MCP 서버**: mcp_server.py, run_mcp.py.
-✓ `claude mcp add` 등록 후 외부에서 wiki_search/query_journal/read_soul/read_transcript 왕복. 읽기 전용 확인.
+**M9 — MCP server**: mcp_server.py, run_mcp.py.
+✓ After `claude mcp add` registration, external round-trips of wiki_search/query_journal/read_soul/read_transcript. Read-only confirmed.
 
-**M10 — 운영 마감**: README.md(Windows 기준 셋업→실행→관찰→MCP 등록 재현 절차), 스크립트 다듬기.
-✓ 새 환경에서 README만으로 재현.
+**M10 — Operational wrap-up**: README.md (Windows-based setup→run→observe→MCP registration reproduction steps), script polish.
+✓ Reproducible in a fresh environment from the README alone.
 
-## P10. 테스트 전략
+## P10. Test strategy
 
-- **FakeLLM**(tests/fake_llm.py): `chat(messages, tools=None)->response` 동일 인터페이스, 응답 큐 시나리오 — ①흥미상승·deepen 연속→thread 유지+soul_update ②하락→abandon→새 thread ③깨진 JSON→추출 폴백 ④비-JSON 2연속→error 스텝 ⑤soul_update→커밋 해시 저널 기록 ⑥tool_calls 반환→도구 디스패치·max_tool_rounds 강제 종료 ⑦선점: 스텝 중 chat 플래그→스냅샷 저장·복원
-- **llm.py**: `httpx.MockTransport`로 429/500/타임아웃 → 백오프 검증 (실 네트워크 없음)
-- **웹 도구**: MockTransport로 DDG HTML/arXiv Atom 고정 응답 파싱 검증
-- **스킬**: 정상/타임아웃/크래시/비JSON 출력 스킬 픽스처로 러너·자동 비활성 검증
-- **위키**: tmp data dir에서 CRUD·FTS·백링크·rebuild 검증. revealed_interest는 저널 픽스처로 순수 함수 테스트
-- **저장/git**: tmp_path에 실제 git init 후 커밋 로직 검증
-- **웹 API**: FastAPI TestClient + 가짜 data dir, SSE는 이벤트 1개 수신까지
-- **E2E 개발 모드**: `llm.mock=true`면 전체 파이프라인이 FakeLLM으로 구동 — UI 개발 시 API 비용 0
+- **FakeLLM** (tests/fake_llm.py): same `chat(messages, tools=None)->response` interface, response-queue scenarios — ① rising interest, consecutive deepen → thread kept + soul_update ② falling → abandon → new thread ③ broken JSON → extraction fallback ④ two consecutive non-JSON → error step ⑤ soul_update → commit hash recorded in journal ⑥ tool_calls returned → tool dispatch + max_tool_rounds forced termination ⑦ preemption: chat flag mid-step → snapshot save/restore
+- **llm.py**: 429/500/timeout via `httpx.MockTransport` → backoff verified (no real network)
+- **Web tools**: parsing verified against fixed DDG HTML/arXiv Atom responses via MockTransport
+- **Skills**: runner + auto-disable verified with normal/timeout/crash/non-JSON-output skill fixtures
+- **Wiki**: CRUD/FTS/backlinks/rebuild verified in a tmp data dir. revealed_interest tested as a pure function against journal fixtures
+- **Storage/git**: commit logic verified against a real git init under tmp_path
+- **Web API**: FastAPI TestClient + fake data dir; SSE tested up to receiving one event
+- **E2E dev mode**: with `llm.mock=true`, the whole pipeline runs on FakeLLM — zero API cost during UI development
 
-## P11. 검증 방법
+## P11. Verification method
 
-1. `pytest` 전체 green (mock 기반 루프/선점/스킬/저장/API 로직)
-2. `python run_agent.py --once --mock` → data/ 산출물·저널·state·트랜스크립트 수동 확인
-3. 실 API 키로 `--once` 1회 → 실제 LLM 왕복 확인
-4. 두 프로세스 기동 후 브라우저 `localhost:8000` → 캐릭터 반응, SOUL diff, 사고 과정, 위키, 대화(선점 포함), 선물 E2E 수동 확인
-5. 에이전트 프로세스 강제 종료 → UI stale 표시 확인 (장애 격리 검증)
-6. `claude mcp add`로 MCP 등록 → 외부에서 wiki 검색/저널/트랜스크립트 조회 확인
+1. `pytest` all green (mock-based loop/preemption/skill/storage/API logic)
+2. `python run_agent.py --once --mock` → manually inspect data/ outputs, journal, state, transcripts
+3. One `--once` run with a real API key → confirm an actual LLM round-trip
+4. Start both processes, open `localhost:8000` in a browser → manually confirm character reactions, SOUL diffs, thought process, wiki, chat (including preemption), gift E2E
+5. Force-kill the agent process → confirm the UI shows stale (failure-isolation check)
+6. Register MCP via `claude mcp add` → confirm external wiki search/journal/transcript queries
 
-## 정직한 프레이밍 반영
+## Honest framing, reflected
 
-UI 상단 고정 문구: "이 존재는 자기주도적 흥미를 시뮬레이션합니다" 수준의 담백한 표기. 기록 안 된 대화는 "기억되지 않음" 명시. stated/revealed 괴리도 숨기지 않고 노출.
+A fixed line at the top of the UI: plain wording on the level of "this being simulates self-directed interest". Unrecorded conversations are explicitly marked "not remembered". The stated/revealed gap is exposed, not hidden.
