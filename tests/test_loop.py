@@ -149,6 +149,34 @@ def test_deepen_keeps_thread_id(config, data_paths):
     assert r1["thread_id"] == r2["thread_id"]
 
 
+def test_deepen_keeps_thread_id_despite_topic_drift(config, data_paths):
+    # The decision carries the thread even when the model rephrases the topic
+    # line between steps (spec P4: deepen keeps thread).
+    llm1 = FakeLLM([_act(topic="Restructure notes"), _reflect(decision="deepen")])
+    r1 = loop.run_step(config, data_paths, llm1)
+    llm2 = FakeLLM([_act(topic="Restructuring the notes"), _reflect(decision="deepen")])
+    r2 = loop.run_step(config, data_paths, llm2)
+    assert r1["thread_id"] == r2["thread_id"]
+
+    # state.json's current_thread accumulated both steps and follows the
+    # latest wording as its label.
+    st = state_store.read_state(data_paths.state_json)
+    assert st["current_thread"]["thread_id"] == r1["thread_id"]
+    assert st["current_thread"]["steps"] == 2
+    assert st["current_thread"]["topic"] == "Restructuring the notes"
+
+
+def test_deepen_supplies_previous_interest_to_reflect(config, data_paths):
+    # Step 1 rates 7 and deepens; step 2's REFLECT prompt must offer 7 as the
+    # comparison basis even though the topic wording drifted.
+    llm1 = FakeLLM([_act(topic="T"), _reflect(decision="deepen", interest=7)])
+    loop.run_step(config, data_paths, llm1)
+    llm2 = FakeLLM([_act(topic="T, continued"), _reflect(decision="deepen")])
+    loop.run_step(config, data_paths, llm2)
+    user_msg = llm2.calls[-1]["messages"][-1]["content"]
+    assert "your interest was 7" in user_msg
+
+
 def test_new_decision_starts_fresh_thread(config, data_paths):
     llm1 = FakeLLM([_act(topic="T"), _reflect(decision="new")])
     r1 = loop.run_step(config, data_paths, llm1)

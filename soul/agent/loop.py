@@ -376,7 +376,11 @@ def _run_step_body(
     summary = str(reflect_json.get("summary") or "").strip() or topic
 
     # 6. Thread bookkeeping (spec P4): deepen keeps thread; else fresh next step.
-    if ctx.thread.thread_id and ctx.thread.topic == topic:
+    # The previous step's *decision* carries the thread (ctx.thread is only
+    # populated when it was 'deepen'), not the topic wording — the model
+    # rephrases the topic line between steps, so string equality would
+    # fragment nearly every deepened thread.
+    if ctx.thread.thread_id:
         thread_id = ctx.thread.thread_id
     else:
         thread_id = _new_thread_id(st["step_counter"])
@@ -477,9 +481,9 @@ def _update_state(
     }
     if decision == "deepen":
         thread = st.get("current_thread") or {"topic": topic, "steps": 0, "interest_series": []}
-        if thread.get("topic") != topic:
+        if thread.get("thread_id") not in (None, thread_id):
             thread = {"topic": topic, "steps": 0, "interest_series": []}
-        thread["topic"] = topic
+        thread["topic"] = topic  # label follows the latest step's wording
         thread["steps"] = int(thread.get("steps", 0)) + 1
         thread.setdefault("interest_series", []).append(interest)
         thread["thread_id"] = thread_id
