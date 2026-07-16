@@ -34,6 +34,22 @@ _PLACEHOLDER_INDEX = """\
 """
 
 
+class RevalidatedStaticFiles(StaticFiles):
+    """StaticFiles that forces conditional revalidation on every request.
+
+    Without Cache-Control, browsers cache HTML/JS heuristically and keep
+    serving a pre-deploy UI (old module scripts against a new index.html
+    render as an unstyled page). ``no-cache`` still allows caching but makes
+    the browser revalidate with If-None-Match, so unchanged files stay cheap
+    304s and a deploy is picked up on the next normal reload.
+    """
+
+    def file_response(self, *args: Any, **kwargs: Any) -> Any:
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 def _ensure_placeholder_index() -> None:
     """Create a placeholder index.html only if the static dir has no files."""
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
@@ -127,6 +143,6 @@ def create_app(
         app.add_middleware(IPAllowlistMiddleware, networks=networks)
 
     _ensure_placeholder_index()
-    app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
+    app.mount("/", RevalidatedStaticFiles(directory=str(STATIC_DIR), html=True), name="static")
 
     return app
