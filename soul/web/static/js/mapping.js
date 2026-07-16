@@ -1,6 +1,6 @@
 // mapping.js — single source of truth for action→position/animation,
 // interest→expression, decision→one-shot effect, and related UI mapping.
-// PLAN.md §P4 "매핑 규칙 (mapping.js 단일 소스)" is the spec this file implements.
+// PLAN.md §P4 "Mapping rules (single source: mapping.js)" is the spec this file implements.
 //
 // Plain ES module, no build step, no external deps.
 
